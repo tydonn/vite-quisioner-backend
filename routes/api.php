@@ -10,6 +10,14 @@ Route::get('/user', function (Request $request) {
     return $request->user();
 })->middleware('auth:sanctum');
 
+// Get auth user
+Route::middleware('auth:sanctum')->get('/me', function (Request $request) {
+    return response()->json([
+        'success' => true,
+        'user' => $request->user(),
+    ]);
+});
+
 // Auth routes
 Route::post('/login', [AuthController::class, 'login']);
 Route::middleware('auth:sanctum')->group(function () {
@@ -22,10 +30,7 @@ Route::middleware('auth:sanctum')->group(function () {
         ]);
     });
 
-    // Route admin lain nanti di sini
-    // Route::get('/me', ...)
+    // API Routes
+    Route::get('/categories', [CategoryController::class, 'index']);
+    Route::get('/questions', [QuestionController::class, 'index']);
 });
-
-// API Routes
-Route::get('/categories', [CategoryController::class, 'index']);
-Route::get('/questions', [QuestionController::class, 'index']);
