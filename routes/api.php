@@ -30,7 +30,9 @@ Route::middleware('auth:sanctum')->group(function () {
         ]);
     });
 
-    // API Routes
-    Route::get('/categories', [CategoryController::class, 'index']);
-    Route::get('/questions', [QuestionController::class, 'index']);
+    // // Routes resources for categories
+    // Route::get('/categories', [CategoryController::class, 'index']);
+    Route::apiResource('categories', CategoryController::class);
+    // Route resources for questions
+    Route::apiResource('questions', QuestionController::class);
 });
