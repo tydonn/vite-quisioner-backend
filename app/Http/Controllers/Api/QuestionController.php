@@ -39,7 +39,7 @@ class QuestionController extends Controller
      */
     public function show($id)
     {
-        $question = Question::with(['category', 'choiceType'])
+        $question = Question::with(['category'])
             ->findOrFail($id);
 
         return response()->json([

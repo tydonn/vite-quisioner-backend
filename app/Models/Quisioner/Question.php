@@ -26,9 +26,4 @@ class Question extends Model
     {
         return $this->belongsTo(Category::class, 'CategoryID', 'CategoryID');
     }
-
-    public function choiceType()
-    {
-        return $this->belongsTo(ChoiceType::class, 'ChoiceTypeID', 'ChoiceTypeID');
-    }
 }
