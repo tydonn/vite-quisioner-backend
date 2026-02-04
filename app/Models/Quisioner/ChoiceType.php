@@ -14,7 +14,9 @@ class ChoiceType extends Model
     public $timestamps = false;
 
     protected $fillable = [
-        'ChoiceTypeName',
+        'TypeCode',
+        'TypeName',
+        'Description',
         'IsActive',
     ];
 }

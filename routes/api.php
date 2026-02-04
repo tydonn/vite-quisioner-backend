@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\CategoryController;
 use App\Http\Controllers\Api\ChoiceController;
+use App\Http\Controllers\Api\ChoiceTypeController;
 use App\Http\Controllers\Api\QuestionController;
 use App\Http\Controllers\AuthController;
 use Illuminate\Http\Request;
@@ -37,4 +38,6 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::apiResource('questions', QuestionController::class);
     // Route resources for choices
     Route::apiResource('choices', ChoiceController::class);
+    // Route resources for choice types
+    Route::apiResource('choice-types', ChoiceTypeController::class);
 });
