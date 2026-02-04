@@ -55,7 +55,7 @@ class ResponseController extends Controller
             'Semester' => 'required|string|max:10',
         ]);
 
-        $response = Response::created($request->all());
+        $response = Response::create($request->all());
 
         return response()->json([
             'success' => true,

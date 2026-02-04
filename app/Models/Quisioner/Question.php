@@ -26,4 +26,10 @@ class Question extends Model
     {
         return $this->belongsTo(Category::class, 'CategoryID', 'CategoryID');
     }
+
+    // Define relationship with ResponseDetail
+    public function responseDetail()
+    {
+        return $this->hasMany(ResponseDetail::class, 'AspectID', 'AspectID');
+    }
 }

@@ -25,4 +25,10 @@ class Choice extends Model
     {
         return $this->belongsTo(Question::class, 'AspectID', 'AspectID');
     }
+
+    // Define relationship with ResponseDetail
+    public function responseDetails()
+    {
+        return $this->hasMany(ResponseDetail::class, 'ChoiceID', 'ChoiceID');
+    }
 }

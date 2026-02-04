@@ -20,4 +20,10 @@ class Response extends Model
         'TahunAkademik',
         'Semester',
     ];
+
+    // Define relationship with ResponseDetail
+    public function responseDetails()
+    {
+        return $this->hasMany(ResponseDetail::class, 'ResponID', 'ResponID');
+    }
 }
