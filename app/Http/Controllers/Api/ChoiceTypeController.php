@@ -27,9 +27,25 @@ class ChoiceTypeController extends Controller
             $query->where('IsActive', $request->active);
         }
 
+        $perPage = (int) $request->get('per_page', 100);
+        if ($perPage < 1) {
+            $perPage = 100;
+        }
+        if ($perPage > 500) {
+            $perPage = 500;
+        }
+
+        $result = $query->paginate($perPage);
+
         return response()->json([
             'success' => true,
-            'data' => $query->get(),
+            'data' => $result->items(),
+            'pagination' => [
+                'current_page' => $result->currentPage(),
+                'per_page' => $result->perPage(),
+                'total' => $result->total(),
+                'last_page' => $result->lastPage(),
+            ],
         ]);
     }
 
