@@ -26,6 +26,7 @@ class ResponseDetailController extends Controller
             ->with([
                 'response:ResponID,MahasiswaID,DosenID,MatakuliahID,TahunAkademik,Semester',
                 'response.dosen:Login,Nama',
+                'response.mahasiswa:MhswID,Nama',
                 'question:AspectID,CategoryID,AspectText,AnswerType',
                 'choice:ChoiceID,ChoiceLabel,ChoiceValue',
             ])
