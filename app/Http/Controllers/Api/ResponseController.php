@@ -15,6 +15,19 @@ class ResponseController extends Controller
     {
         //
         $query = Response::query()
+            ->select([
+                'ResponID',
+                'MahasiswaID',
+                'DosenID',
+                'MatakuliahID',
+                'TahunAkademik',
+                'Semester',
+                'CreatedAt',
+            ])
+            ->with([
+                'dosen:Login,Nama',
+                'mahasiswa:MhswID,Nama',
+            ])
             ->orderBy('ResponID');
 
         // filter by MahasiswaID
@@ -63,15 +76,15 @@ class ResponseController extends Controller
     public function store(Request $request)
     {
         //validate request
-        $request->validate([
+        $data = $request->validate([
             'MahasiswaID' => 'required|integer',
-            'DosenID' => 'required|integer',
+            'DosenID' => 'required|string',
             'MatakuliahID' => 'required|integer',
             'TahunAkademik' => 'required|string|max:10',
             'Semester' => 'required|string|max:10',
         ]);
 
-        $response = Response::create($request->all());
+        $response = Response::create($data);
 
         return response()->json([
             'success' => true,
@@ -85,7 +98,9 @@ class ResponseController extends Controller
     public function show(string $id)
     {
         //
-        $response = Response::findOrFail($id);
+        $response = Response::with([
+            'dosen:Login,Nama',
+        ])->findOrFail($id);
 
         return response()->json([
             'success' => true,
@@ -111,7 +126,7 @@ class ResponseController extends Controller
 
         $data = $request->validate([
             'MahasiswaID' => 'sometimes|integer',
-            'DosenID' => 'sometimes|integer',
+            'DosenID' => 'sometimes|string',
             'MatakuliahID' => 'sometimes|integer',
             'TahunAkademik' => 'sometimes|string|max:10',
             'Semester' => 'sometimes|string|max:10',

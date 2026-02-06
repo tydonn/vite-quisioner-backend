@@ -6,8 +6,10 @@ use App\Http\Controllers\Api\ChoiceTypeController;
 use App\Http\Controllers\Api\QuestionController;
 use App\Http\Controllers\Api\ResponseController;
 use App\Http\Controllers\Api\ResponseDetailController;
+use App\Http\Controllers\Api\Siakad\DosenController;
 use App\Http\Controllers\AuthController;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/user', function (Request $request) {
@@ -46,4 +48,23 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::apiResource('responses', ResponseController::class);
     // Route resources for response details
     Route::apiResource('response-details', ResponseDetailController::class);
+
+    // Route for dosen (siakad)
+    Route::apiResource('dosen', DosenController::class);
+});
+
+Route::get('/test-siakad', function () {
+    try {
+        DB::connection('siakad')->getPdo();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Koneksi DB siakad OK'
+        ]);
+    } catch (\Exception $e) {
+        return response()->json([
+            'success' => false,
+            'error' => $e->getMessage()
+        ], 500);
+    }
 });

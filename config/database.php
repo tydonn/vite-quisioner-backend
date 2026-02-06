@@ -63,7 +63,7 @@ return [
             ]) : [],
         ],
 
-        // 👇 TAMBAHKAN DI SINI database 2 (quisioner)
+        // database 2 (quisioner)
         'quisioner' => [
             'driver' => 'mysql',
             'host' => env('DB2_HOST', '31.97.66.1'),
@@ -74,7 +74,22 @@ return [
             'charset' => 'utf8mb4',
             'collation' => 'utf8mb4_unicode_ci',
             'prefix' => '',
-            'strict' => false, // 🔑 penting untuk DB lama
+            'strict' => false, // penting untuk DB lama
+            'engine' => null,
+        ],
+
+        // database 3 (siakad legacy)
+        'siakad' => [
+            'driver' => 'mysql',
+            'host' => env('DB3_HOST', '31.97.66.1'),
+            'port' => env('DB3_PORT', '3306'),
+            'database' => env('DB3_DATABASE', 'dbsa_siakad'),
+            'username' => env('DB3_USERNAME', 'dbsa_devquiz'),
+            'password' => env('DB3_PASSWORD'),
+            'charset' => 'utf8mb4',
+            'collation' => 'utf8mb4_unicode_ci',
+            'prefix' => '',
+            'strict' => false,
             'engine' => null,
         ],
 

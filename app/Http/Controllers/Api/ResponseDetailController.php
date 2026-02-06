@@ -25,6 +25,7 @@ class ResponseDetailController extends Controller
             ])
             ->with([
                 'response:ResponID,MahasiswaID,DosenID,MatakuliahID,TahunAkademik,Semester',
+                'response.dosen:Login,Nama',
                 'question:AspectID,CategoryID,AspectText,AnswerType',
                 'choice:ChoiceID,ChoiceLabel,ChoiceValue',
             ])
@@ -105,6 +106,7 @@ class ResponseDetailController extends Controller
         //
         $responseDetail = ResponseDetail::with([
             'response:ResponID,MahasiswaID,DosenID,MatakuliahID,TahunAkademik,Semester',
+            'response.dosen:Login,Nama',
             'question:AspectID,CategoryID,AspectText,AnswerType',
             'choice:ChoiceID,ChoiceLabel,ChoiceValue',
         ])->findOrFail($id);

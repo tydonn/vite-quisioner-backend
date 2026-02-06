@@ -3,6 +3,8 @@
 namespace App\Models\Quisioner;
 
 use Illuminate\Database\Eloquent\Model;
+use App\Models\Siakad\Dosen;
+use App\Models\Siakad\Mahasiswa;
 
 class Response extends Model
 {
@@ -25,5 +27,15 @@ class Response extends Model
     public function responseDetails()
     {
         return $this->hasMany(ResponseDetail::class, 'ResponID', 'ResponID');
+    }
+
+    public function dosen()
+    {
+        return $this->belongsTo(Dosen::class, 'DosenID', 'Login');
+    }
+
+    public function mahasiswa()
+    {
+        return $this->belongsTo(Mahasiswa::class, 'MahasiswaID', 'MhswID');
     }
 }
