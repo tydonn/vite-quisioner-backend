@@ -5,6 +5,7 @@ namespace App\Models\Quisioner;
 use Illuminate\Database\Eloquent\Model;
 use App\Models\Siakad\Dosen;
 use App\Models\Siakad\Mahasiswa;
+use App\Models\Siakad\MataKuliah;
 
 class Response extends Model
 {
@@ -37,5 +38,10 @@ class Response extends Model
     public function mahasiswa()
     {
         return $this->belongsTo(Mahasiswa::class, 'MahasiswaID', 'MhswID');
+    }
+
+    public function matakuliah()
+    {
+        return $this->belongsTo(MataKuliah::class, 'MatakuliahID', 'MKID');
     }
 }

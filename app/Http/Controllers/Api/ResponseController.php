@@ -27,6 +27,7 @@ class ResponseController extends Controller
             ->with([
                 'dosen:Login,Nama',
                 'mahasiswa:MhswID,Nama',
+                'matakuliah:MKID,Nama',
             ])
             ->orderBy('ResponID');
 
@@ -38,6 +39,11 @@ class ResponseController extends Controller
         // filter by DosenID
         if ($request->filled('dosen_id')) {
             $query->where('DosenID', $request->dosen_id);
+        }
+
+        // filter by MatakuliahID
+        if ($request->filled('matakuliah_id')) {
+            $query->where('MatakuliahID', $request->matakuliah_id);
         }
 
         $perPage = (int) $request->get('per_page', 100);
@@ -100,6 +106,8 @@ class ResponseController extends Controller
         //
         $response = Response::with([
             'dosen:Login,Nama',
+            'mahasiswa:MhswID,Nama',
+            'matakuliah:MKID,Nama',
         ])->findOrFail($id);
 
         return response()->json([
