@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Quisioner\ResponseDetail;
+use App\Models\Siakad\MataKuliah;
 use Illuminate\Http\Request;
 
 class ResponseDetailController extends Controller
@@ -27,7 +28,8 @@ class ResponseDetailController extends Controller
                 'response:ResponID,MahasiswaID,DosenID,MatakuliahID,TahunAkademik,Semester',
                 'response.dosen:Login,Nama',
                 'response.mahasiswa:MhswID,Nama',
-                'response.matakuliah:MKID,Nama',
+                'response.matakuliah:MKID,Nama,ProdiID',
+                'response.matakuliah.prodi:ProdiID,Nama',
                 'question:AspectID,CategoryID,AspectText,AnswerType',
                 'choice:ChoiceID,ChoiceLabel,ChoiceValue',
             ])
@@ -46,6 +48,31 @@ class ResponseDetailController extends Controller
         // filter by choice
         if ($request->filled('choice_id')) {
             $query->where('ChoiceID', $request->choice_id);
+        }
+
+        // filter by tahun akademik (response)
+        if ($request->filled('tahun_akademik')) {
+            $query->whereHas('response', function ($q) use ($request) {
+                $q->where('TahunAkademik', $request->tahun_akademik);
+            });
+        }
+
+        // filter by nama prodi (siakad -> mk -> prodi)
+        if ($request->filled('nama_prodi')) {
+            $mkIds = MataKuliah::query()
+                ->select(['MKID'])
+                ->whereHas('prodi', function ($q) use ($request) {
+                    $q->where('Nama', 'like', '%' . $request->nama_prodi . '%');
+                })
+                ->pluck('MKID');
+
+            if ($mkIds->isEmpty()) {
+                $query->whereRaw('1 = 0');
+            } else {
+                $query->whereHas('response', function ($q) use ($mkIds) {
+                    $q->whereIn('MatakuliahID', $mkIds);
+                });
+            }
         }
 
         $perPage = (int) $request->get('per_page', 100);
@@ -110,7 +137,8 @@ class ResponseDetailController extends Controller
             'response:ResponID,MahasiswaID,DosenID,MatakuliahID,TahunAkademik,Semester',
             'response.dosen:Login,Nama',
             'response.mahasiswa:MhswID,Nama',
-            'response.matakuliah:MKID,Nama',
+            'response.matakuliah:MKID,Nama,ProdiID',
+            'response.matakuliah.prodi:ProdiID,Nama',
             'question:AspectID,CategoryID,AspectText,AnswerType',
             'choice:ChoiceID,ChoiceLabel,ChoiceValue',
         ])->findOrFail($id);

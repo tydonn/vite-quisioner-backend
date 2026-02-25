@@ -3,6 +3,7 @@
 namespace App\Models\Siakad;
 
 use Illuminate\Database\Eloquent\Model;
+use App\Models\Siakad\Prodi;
 
 class MataKuliah extends Model
 {
@@ -18,5 +19,11 @@ class MataKuliah extends Model
     protected $fillable = [
         'MKID',
         'Nama',
+        'ProdiID',
     ];
+
+    public function prodi()
+    {
+        return $this->belongsTo(Prodi::class, 'ProdiID', 'ProdiID');
+    }
 }

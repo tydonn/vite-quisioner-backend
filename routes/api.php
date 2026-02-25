@@ -53,18 +53,18 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::apiResource('dosen', DosenController::class);
 });
 
-Route::get('/test-siakad', function () {
-    try {
-        DB::connection('siakad')->getPdo();
+// Route::get('/test-siakad', function () {
+//     try {
+//         DB::connection('siakad')->getPdo();
 
-        return response()->json([
-            'success' => true,
-            'message' => 'Koneksi DB siakad OK'
-        ]);
-    } catch (\Exception $e) {
-        return response()->json([
-            'success' => false,
-            'error' => $e->getMessage()
-        ], 500);
-    }
-});
+//         return response()->json([
+//             'success' => true,
+//             'message' => 'Koneksi DB siakad OK'
+//         ]);
+//     } catch (\Exception $e) {
+//         return response()->json([
+//             'success' => false,
+//             'error' => $e->getMessage()
+//         ], 500);
+//     }
+// });
