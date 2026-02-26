@@ -46,6 +46,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::apiResource('choice-types', ChoiceTypeController::class);
     // Route resources for responses
     Route::apiResource('responses', ResponseController::class);
+    // Route download response details (must be above apiResource)
+    Route::get('response-details/download', [ResponseDetailController::class, 'download']);
     // Route resources for response details
     Route::apiResource('response-details', ResponseDetailController::class);
 
