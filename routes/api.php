@@ -44,6 +44,9 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::apiResource('choices', ChoiceController::class);
     // Route resources for choice types
     Route::apiResource('choice-types', ChoiceTypeController::class);
+    // Route options for response filters (dropdown)
+    Route::get('responses/filter-options/prodi', [ResponseController::class, 'prodiOptions']);
+    Route::get('responses/filter-options/matakuliah', [ResponseController::class, 'matakuliahOptions']);
     // Route resources for responses
     Route::apiResource('responses', ResponseController::class);
     // Route download response details (must be above apiResource)

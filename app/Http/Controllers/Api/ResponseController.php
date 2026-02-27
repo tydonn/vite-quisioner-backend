@@ -4,16 +4,106 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Quisioner\Response;
+use App\Models\Siakad\MataKuliah;
+use App\Models\Siakad\Prodi;
 use Illuminate\Http\Request;
 
 class ResponseController extends Controller
 {
+    public function prodiOptions(Request $request)
+    {
+        $matakuliahIds = Response::query()
+            ->when($request->filled('tahun_akademik'), function ($query) use ($request) {
+                $query->where('TahunAkademik', $request->tahun_akademik);
+            })
+            ->when($request->filled('semester'), function ($query) use ($request) {
+                $query->where('Semester', $request->semester);
+            })
+            ->distinct()
+            ->pluck('MatakuliahID');
+
+        if ($matakuliahIds->isEmpty()) {
+            return response()->json([
+                'success' => true,
+                'data' => [],
+            ]);
+        }
+
+        $prodiIds = MataKuliah::query()
+            ->whereIn('MKID', $matakuliahIds)
+            ->whereNotNull('ProdiID')
+            ->distinct()
+            ->pluck('ProdiID');
+
+        $prodiQuery = Prodi::query()
+            ->select(['ProdiID', 'Nama'])
+            ->whereIn('ProdiID', $prodiIds)
+            ->orderBy('Nama');
+
+        if ($request->filled('q')) {
+            $prodiQuery->where('Nama', 'like', '%' . $request->q . '%');
+        }
+
+        return response()->json([
+            'success' => true,
+            'data' => $prodiQuery->get(),
+        ]);
+    }
+
+    public function matakuliahOptions(Request $request)
+    {
+        $matakuliahIds = Response::query()
+            ->when($request->filled('tahun_akademik'), function ($query) use ($request) {
+                $query->where('TahunAkademik', $request->tahun_akademik);
+            })
+            ->when($request->filled('semester'), function ($query) use ($request) {
+                $query->where('Semester', $request->semester);
+            })
+            ->distinct()
+            ->pluck('MatakuliahID');
+
+        if ($matakuliahIds->isEmpty()) {
+            return response()->json([
+                'success' => true,
+                'data' => [],
+            ]);
+        }
+
+        $matakuliahQuery = MataKuliah::query()
+            ->select(['MKID', 'MKKode', 'Nama', 'ProdiID'])
+            ->with(['prodi:ProdiID,Nama'])
+            ->whereIn('MKID', $matakuliahIds)
+            ->orderBy('Nama');
+
+        if ($request->filled('prodi_id')) {
+            $matakuliahQuery->where('ProdiID', $request->prodi_id);
+        }
+
+        if ($request->filled('q')) {
+            $matakuliahQuery->where('Nama', 'like', '%' . $request->q . '%');
+        }
+
+        $limit = (int) $request->get('limit', 200);
+        if ($limit < 1) {
+            $limit = 200;
+        }
+        if ($limit > 1000) {
+            $limit = 1000;
+        }
+
+        return response()->json([
+            'success' => true,
+            'data' => $matakuliahQuery->limit($limit)->get(),
+        ]);
+    }
+
     /**
      * Display a listing of the resource.
      */
     public function index(Request $request)
     {
         //
+        $withRelations = $request->boolean('with_relations', true);
         $query = Response::query()
             ->select([
                 'ResponID',
@@ -24,12 +114,21 @@ class ResponseController extends Controller
                 'Semester',
                 'CreatedAt',
             ])
-            ->with([
+            ->orderBy('ResponID');
+
+        if ($withRelations) {
+            $query->with([
                 'dosen:Login,Nama',
                 'mahasiswa:MhswID,Nama',
-                'matakuliah:MKID,Nama',
-            ])
-            ->orderBy('ResponID');
+                'matakuliah:MKID,MKKode,Nama,ProdiID',
+                'matakuliah.prodi:ProdiID,Nama',
+            ]);
+        }
+
+        // filter by ResponID
+        if ($request->filled('respon_id')) {
+            $query->where('ResponID', $request->respon_id);
+        }
 
         // filter by MahasiswaID
         if ($request->filled('mahasiswa_id')) {
@@ -46,6 +145,52 @@ class ResponseController extends Controller
             $query->where('MatakuliahID', $request->matakuliah_id);
         }
 
+        // filter by ProdiID / nama prodi via mata kuliah (cross-database safe)
+        if ($request->filled('prodi_id') || $request->filled('nama_prodi')) {
+            $mkQuery = MataKuliah::query()->select(['MKID']);
+
+            if ($request->filled('prodi_id')) {
+                $mkQuery->where('ProdiID', $request->prodi_id);
+            }
+
+            if ($request->filled('nama_prodi')) {
+                $mkQuery->whereHas('prodi', function ($subQuery) use ($request) {
+                    $subQuery->where('Nama', 'like', '%' . $request->nama_prodi . '%');
+                });
+            }
+
+            $mkIds = $mkQuery->pluck('MKID');
+
+            if ($mkIds->isEmpty()) {
+                $query->whereRaw('1 = 0');
+            } else {
+                $query->whereIn('MatakuliahID', $mkIds);
+            }
+        }
+
+        // filter by TahunAkademik
+        if ($request->filled('tahun_akademik')) {
+            $query->where('TahunAkademik', $request->tahun_akademik);
+        }
+
+        // filter by Semester
+        if ($request->filled('semester')) {
+            $query->where('Semester', $request->semester);
+        }
+
+        // filter by CreatedAt (exact date)
+        if ($request->filled('created_at')) {
+            $query->whereDate('CreatedAt', $request->created_at);
+        }
+
+        // filter by CreatedAt range
+        if ($request->filled('created_at_from')) {
+            $query->whereDate('CreatedAt', '>=', $request->created_at_from);
+        }
+        if ($request->filled('created_at_to')) {
+            $query->whereDate('CreatedAt', '<=', $request->created_at_to);
+        }
+
         $perPage = (int) $request->get('per_page', 100);
         if ($perPage < 1) {
             $perPage = 100;
@@ -54,7 +199,10 @@ class ResponseController extends Controller
             $perPage = 500;
         }
 
-        $result = $query->paginate($perPage);
+        $includeTotal = $request->boolean('include_total', false);
+        $result = $includeTotal
+            ? $query->paginate($perPage)
+            : $query->simplePaginate($perPage);
 
         return response()->json([
             'success' => true,
@@ -62,8 +210,9 @@ class ResponseController extends Controller
             'pagination' => [
                 'current_page' => $result->currentPage(),
                 'per_page' => $result->perPage(),
-                'total' => $result->total(),
-                'last_page' => $result->lastPage(),
+                'total' => $includeTotal ? $result->total() : null,
+                'last_page' => $includeTotal ? $result->lastPage() : null,
+                'has_more' => $result->hasMorePages(),
             ],
         ]);
     }
@@ -107,7 +256,8 @@ class ResponseController extends Controller
         $response = Response::with([
             'dosen:Login,Nama',
             'mahasiswa:MhswID,Nama',
-            'matakuliah:MKID,Nama',
+            'matakuliah:MKID,MKKode,Nama,ProdiID',
+            'matakuliah.prodi:ProdiID,Nama',
         ])->findOrFail($id);
 
         return response()->json([

@@ -18,6 +18,7 @@ class MataKuliah extends Model
 
     protected $fillable = [
         'MKID',
+        'MKKode',
         'Nama',
         'ProdiID',
     ];

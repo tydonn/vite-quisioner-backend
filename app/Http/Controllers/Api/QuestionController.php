@@ -15,7 +15,16 @@ class QuestionController extends Controller
     public function index(Request $request)
     {
         $query = Question::query()
-            ->with('category')
+            ->select([
+                'AspectID',
+                'CategoryID',
+                'AspectText',
+                'AnswerType',
+                'ChoiceTypeID',
+                'SortOrder',
+                'IsActive',
+            ])
+            ->with('category:CategoryID,CategoryName,SortOrder,IsActive')
             ->orderBy('SortOrder');
 
         // filter by category
@@ -36,7 +45,10 @@ class QuestionController extends Controller
             $perPage = 500;
         }
 
-        $result = $query->paginate($perPage);
+        $includeTotal = $request->boolean('include_total', false);
+        $result = $includeTotal
+            ? $query->paginate($perPage)
+            : $query->simplePaginate($perPage);
 
         return response()->json([
             'success' => true,
@@ -44,8 +56,9 @@ class QuestionController extends Controller
             'pagination' => [
                 'current_page' => $result->currentPage(),
                 'per_page' => $result->perPage(),
-                'total' => $result->total(),
-                'last_page' => $result->lastPage(),
+                'total' => $includeTotal ? $result->total() : null,
+                'last_page' => $includeTotal ? $result->lastPage() : null,
+                'has_more' => $result->hasMorePages(),
             ],
         ]);
     }
@@ -55,7 +68,16 @@ class QuestionController extends Controller
      */
     public function show($id)
     {
-        $question = Question::with(['category'])
+        $question = Question::with(['category:CategoryID,CategoryName,SortOrder,IsActive'])
+            ->select([
+                'AspectID',
+                'CategoryID',
+                'AspectText',
+                'AnswerType',
+                'ChoiceTypeID',
+                'SortOrder',
+                'IsActive',
+            ])
             ->findOrFail($id);
 
         return response()->json([

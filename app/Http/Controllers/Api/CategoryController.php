@@ -30,7 +30,10 @@ class CategoryController extends Controller
             $perPage = 500;
         }
 
-        $result = $query->paginate($perPage);
+        $includeTotal = $request->boolean('include_total', false);
+        $result = $includeTotal
+            ? $query->paginate($perPage)
+            : $query->simplePaginate($perPage);
 
         return response()->json([
             'success' => true,
@@ -38,8 +41,9 @@ class CategoryController extends Controller
             'pagination' => [
                 'current_page' => $result->currentPage(),
                 'per_page' => $result->perPage(),
-                'total' => $result->total(),
-                'last_page' => $result->lastPage(),
+                'total' => $includeTotal ? $result->total() : null,
+                'last_page' => $includeTotal ? $result->lastPage() : null,
+                'has_more' => $result->hasMorePages(),
             ],
         ]);
     }

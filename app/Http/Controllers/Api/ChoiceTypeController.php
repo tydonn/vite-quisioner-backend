@@ -15,6 +15,14 @@ class ChoiceTypeController extends Controller
     {
         //
         $query = ChoiceType::query()
+            ->select([
+                'ChoiceTypeID',
+                'TypeCode',
+                'TypeName',
+                'Description',
+                'SortOrder',
+                'IsActive',
+            ])
             ->orderBy('ChoiceTypeID');
 
         // filter by choice type
@@ -35,7 +43,10 @@ class ChoiceTypeController extends Controller
             $perPage = 500;
         }
 
-        $result = $query->paginate($perPage);
+        $includeTotal = $request->boolean('include_total', false);
+        $result = $includeTotal
+            ? $query->paginate($perPage)
+            : $query->simplePaginate($perPage);
 
         return response()->json([
             'success' => true,
@@ -43,8 +54,9 @@ class ChoiceTypeController extends Controller
             'pagination' => [
                 'current_page' => $result->currentPage(),
                 'per_page' => $result->perPage(),
-                'total' => $result->total(),
-                'last_page' => $result->lastPage(),
+                'total' => $includeTotal ? $result->total() : null,
+                'last_page' => $includeTotal ? $result->lastPage() : null,
+                'has_more' => $result->hasMorePages(),
             ],
         ]);
     }

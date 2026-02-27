@@ -15,7 +15,15 @@ class ChoiceController extends Controller
     {
         //
         $query = Choice::query()
-            ->with('question')
+            ->select([
+                'ChoiceID',
+                'AspectID',
+                'ChoiceLabel',
+                'ChoiceValue',
+                'SortOrder',
+                'IsActive',
+            ])
+            ->with('question:AspectID,CategoryID,AspectText,AnswerType')
             ->orderBy('SortOrder');
 
         // filter by aspect
@@ -36,7 +44,10 @@ class ChoiceController extends Controller
             $perPage = 500;
         }
 
-        $result = $query->paginate($perPage);
+        $includeTotal = $request->boolean('include_total', false);
+        $result = $includeTotal
+            ? $query->paginate($perPage)
+            : $query->simplePaginate($perPage);
 
         return response()->json([
             'success' => true,
@@ -44,8 +55,9 @@ class ChoiceController extends Controller
             'pagination' => [
                 'current_page' => $result->currentPage(),
                 'per_page' => $result->perPage(),
-                'total' => $result->total(),
-                'last_page' => $result->lastPage(),
+                'total' => $includeTotal ? $result->total() : null,
+                'last_page' => $includeTotal ? $result->lastPage() : null,
+                'has_more' => $result->hasMorePages(),
             ],
         ]);
     }
@@ -87,7 +99,15 @@ class ChoiceController extends Controller
     public function show(string $id)
     {
         //
-        $question = Choice::with(['question'])
+        $question = Choice::with(['question:AspectID,CategoryID,AspectText,AnswerType'])
+            ->select([
+                'ChoiceID',
+                'AspectID',
+                'ChoiceLabel',
+                'ChoiceValue',
+                'SortOrder',
+                'IsActive',
+            ])
             ->findOrFail($id);
 
         return response()->json([

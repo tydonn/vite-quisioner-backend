@@ -2,14 +2,12 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Exports\ResponseDetailsExport;
 use App\Http\Controllers\Controller;
 use App\Models\Quisioner\ResponseDetail;
-use App\Models\Siakad\Dosen;
-use App\Models\Siakad\Mahasiswa;
 use App\Models\Siakad\MataKuliah;
-use App\Models\Siakad\Prodi;
 use Illuminate\Http\Request;
-use Symfony\Component\HttpFoundation\StreamedResponse;
+use Maatwebsite\Excel\Facades\Excel;
 
 class ResponseDetailController extends Controller
 {
@@ -18,7 +16,8 @@ class ResponseDetailController extends Controller
      */
     public function index(Request $request)
     {
-        $query = $this->buildFilteredQuery($request);
+        $withRelations = $request->boolean('with_relations', true);
+        $query = $this->buildFilteredQuery($request, $withRelations);
 
         $perPage = (int) $request->get('per_page', 100);
         if ($perPage < 1) {
@@ -28,7 +27,10 @@ class ResponseDetailController extends Controller
             $perPage = 500;
         }
 
-        $result = $query->paginate($perPage);
+        $includeTotal = $request->boolean('include_total', false);
+        $result = $includeTotal
+            ? $query->paginate($perPage)
+            : $query->simplePaginate($perPage);
 
         return response()->json([
             'success' => true,
@@ -36,16 +38,16 @@ class ResponseDetailController extends Controller
             'pagination' => [
                 'current_page' => $result->currentPage(),
                 'per_page' => $result->perPage(),
-                'total' => $result->total(),
-                'last_page' => $result->lastPage(),
+                'total' => $includeTotal ? $result->total() : null,
+                'last_page' => $includeTotal ? $result->lastPage() : null,
+                'has_more' => $result->hasMorePages(),
             ],
         ]);
     }
 
-    public function download(Request $request): StreamedResponse
+    public function download(Request $request)
     {
-        $query = $this->buildDownloadQuery($request);
-        $fileName = 'response-details-' . now()->format('Ymd-His') . '.csv';
+        $fileName = 'response-details-' . now()->format('Ymd-His') . '.xlsx';
         $chunkSize = (int) $request->get('chunk_size', 1000);
         if ($chunkSize < 100) {
             $chunkSize = 100;
@@ -54,88 +56,20 @@ class ResponseDetailController extends Controller
             $chunkSize = 5000;
         }
 
-        return response()->streamDownload(function () use ($query, $chunkSize) {
-            $output = fopen('php://output', 'w');
-
-            fputcsv($output, [
-                'DetailID',
-                'ResponID',
-                'AspectID',
-                'ChoiceID',
-                'AnswerText',
-                'AnswerNumber',
-                'TahunAkademik',
-                'Semester',
-                'DosenLogin',
-                'DosenNama',
-                'MahasiswaID',
-                'MahasiswaNama',
-                'MatakuliahID',
-                'MatakuliahNama',
-                'ProdiID',
-                'ProdiNama',
-                'AspectText',
-                'ChoiceLabel',
-                'ChoiceValue',
-            ]);
-
-            $query->chunkById($chunkSize, function ($rows) use ($output) {
-                $dosenIds = $rows->pluck('DosenID')->filter()->unique()->values()->all();
-                $mahasiswaIds = $rows->pluck('MahasiswaID')->filter()->unique()->values()->all();
-                $matakuliahIds = $rows->pluck('MatakuliahID')->filter()->unique()->values()->all();
-
-                $dosenMap = Dosen::query()
-                    ->whereIn('Login', $dosenIds)
-                    ->pluck('Nama', 'Login');
-
-                $mahasiswaMap = Mahasiswa::query()
-                    ->whereIn('MhswID', $mahasiswaIds)
-                    ->pluck('Nama', 'MhswID');
-
-                $matakuliahRows = MataKuliah::query()
-                    ->select(['MKID', 'Nama', 'ProdiID'])
-                    ->whereIn('MKID', $matakuliahIds)
-                    ->get();
-
-                $prodiIds = $matakuliahRows->pluck('ProdiID')->filter()->unique()->values()->all();
-                $prodiMap = Prodi::query()
-                    ->whereIn('ProdiID', $prodiIds)
-                    ->pluck('Nama', 'ProdiID');
-
-                $matakuliahMap = $matakuliahRows->keyBy('MKID');
-
-                foreach ($rows as $row) {
-                    $matakuliah = $matakuliahMap->get($row->MatakuliahID);
-                    $prodiId = optional($matakuliah)->ProdiID;
-
-                    fputcsv($output, [
-                        $row->DetailID,
-                        $row->ResponID,
-                        $row->AspectID,
-                        $row->ChoiceID,
-                        $row->AnswerText,
-                        $row->AnswerNumber,
-                        $row->TahunAkademik,
-                        $row->Semester,
-                        $row->DosenID,
-                        $dosenMap[$row->DosenID] ?? null,
-                        $row->MahasiswaID,
-                        $mahasiswaMap[$row->MahasiswaID] ?? null,
-                        $row->MatakuliahID,
-                        optional($matakuliah)->Nama,
-                        $prodiId,
-                        $prodiMap[$prodiId] ?? null,
-                        $row->AspectText,
-                        $row->ChoiceLabel,
-                        $row->ChoiceValue,
-                    ]);
-                }
-            }, 'rd.DetailID', 'DetailID');
-
-            fclose($output);
-        }, $fileName, [
-            'Content-Type' => 'text/csv',
+        $filters = $request->only([
+            'response_id',
+            'aspect_id',
+            'choice_id',
+            'tahun_akademik',
+            'nama_prodi',
+            'matakuliah_id',
+            'nama_matakuliah',
         ]);
+
+        return Excel::download(
+            new ResponseDetailsExport($filters, $chunkSize),
+            $fileName
+        );
     }
 
     /**
@@ -237,7 +171,7 @@ class ResponseDetailController extends Controller
         ]);
     }
 
-    private function buildFilteredQuery(Request $request)
+    private function buildFilteredQuery(Request $request, bool $withRelations = true)
     {
         $query = ResponseDetail::query()
             ->select([
@@ -248,7 +182,10 @@ class ResponseDetailController extends Controller
                 'AnswerText',
                 'AnswerNumber',
             ])
-            ->with([
+            ->orderBy('DetailID');
+
+        if ($withRelations) {
+            $query->with([
                 'response:ResponID,MahasiswaID,DosenID,MatakuliahID,TahunAkademik,Semester',
                 'response.dosen:Login,Nama',
                 'response.mahasiswa:MhswID,Nama',
@@ -256,8 +193,8 @@ class ResponseDetailController extends Controller
                 'response.matakuliah.prodi:ProdiID,Nama',
                 'question:AspectID,CategoryID,AspectText,AnswerType',
                 'choice:ChoiceID,ChoiceLabel,ChoiceValue',
-            ])
-            ->orderBy('DetailID');
+            ]);
+        }
 
         if ($request->filled('response_id')) {
             $query->where('ResponID', $request->response_id);
@@ -294,65 +231,28 @@ class ResponseDetailController extends Controller
             }
         }
 
-        return $query;
-    }
-
-    private function buildDownloadQuery(Request $request)
-    {
-        $query = ResponseDetail::query()
-            ->from('dk_tbl_response_detail as rd')
-            ->join('dk_tbl_response as r', 'rd.ResponID', '=', 'r.ResponID')
-            ->leftJoin('dk_tbl_question as q', 'rd.AspectID', '=', 'q.AspectID')
-            ->leftJoin('dk_tbl_choice as c', 'rd.ChoiceID', '=', 'c.ChoiceID')
-            ->select([
-                'rd.DetailID as DetailID',
-                'rd.ResponID as ResponID',
-                'rd.AspectID as AspectID',
-                'rd.ChoiceID as ChoiceID',
-                'rd.AnswerText as AnswerText',
-                'rd.AnswerNumber as AnswerNumber',
-                'r.TahunAkademik as TahunAkademik',
-                'r.Semester as Semester',
-                'r.DosenID as DosenID',
-                'r.MahasiswaID as MahasiswaID',
-                'r.MatakuliahID as MatakuliahID',
-                'q.AspectText as AspectText',
-                'c.ChoiceLabel as ChoiceLabel',
-                'c.ChoiceValue as ChoiceValue',
-            ])
-            ->orderBy('rd.DetailID');
-
-        if ($request->filled('response_id')) {
-            $query->where('rd.ResponID', $request->response_id);
+        if ($request->filled('matakuliah_id')) {
+            $query->whereHas('response', function ($subQuery) use ($request) {
+                $subQuery->where('MatakuliahID', $request->matakuliah_id);
+            });
         }
 
-        if ($request->filled('aspect_id')) {
-            $query->where('rd.AspectID', $request->aspect_id);
-        }
-
-        if ($request->filled('choice_id')) {
-            $query->where('rd.ChoiceID', $request->choice_id);
-        }
-
-        if ($request->filled('tahun_akademik')) {
-            $query->where('r.TahunAkademik', $request->tahun_akademik);
-        }
-
-        if ($request->filled('nama_prodi')) {
+        if ($request->filled('nama_matakuliah')) {
             $mkIds = MataKuliah::query()
                 ->select(['MKID'])
-                ->whereHas('prodi', function ($subQuery) use ($request) {
-                    $subQuery->where('Nama', 'like', '%' . $request->nama_prodi . '%');
-                })
+                ->where('Nama', 'like', '%' . $request->nama_matakuliah . '%')
                 ->pluck('MKID');
 
             if ($mkIds->isEmpty()) {
                 $query->whereRaw('1 = 0');
             } else {
-                $query->whereIn('r.MatakuliahID', $mkIds);
+                $query->whereHas('response', function ($subQuery) use ($mkIds) {
+                    $subQuery->whereIn('MatakuliahID', $mkIds);
+                });
             }
         }
 
         return $query;
     }
+
 }
