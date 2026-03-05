@@ -15,7 +15,8 @@ class ResponseDetailsExport implements FromGenerator, WithHeadings
 {
     public function __construct(
         private readonly array $filters = [],
-        private readonly int $chunkSize = 1000
+        private readonly int $chunkSize = 1000,
+        private readonly bool $singleQuery = false
     ) {
     }
 
@@ -46,6 +47,34 @@ class ResponseDetailsExport implements FromGenerator, WithHeadings
 
     public function generator(): Generator
     {
+        if ($this->singleQuery) {
+            foreach ($this->buildQuery()->orderBy('rd.DetailID')->cursor() as $row) {
+                yield [
+                    $row->DetailID,
+                    $row->ResponID,
+                    $row->AspectID,
+                    $row->ChoiceID,
+                    $row->AnswerText,
+                    $row->AnswerNumber,
+                    $row->TahunAkademik,
+                    $row->Semester,
+                    $row->DosenID,
+                    null,
+                    $row->MahasiswaID,
+                    null,
+                    $row->MatakuliahID,
+                    null,
+                    null,
+                    null,
+                    $row->AspectText,
+                    $row->ChoiceLabel,
+                    $row->ChoiceValue,
+                ];
+            }
+
+            return;
+        }
+
         $lastId = 0;
 
         while (true) {

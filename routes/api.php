@@ -51,6 +51,10 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::apiResource('responses', ResponseController::class);
     // Route download response details (must be above apiResource)
     Route::get('response-details/download', [ResponseDetailController::class, 'download']);
+    // Async export response details
+    Route::post('response-details/exports', [ResponseDetailController::class, 'requestExport']);
+    Route::get('response-details/exports/{id}', [ResponseDetailController::class, 'exportStatus']);
+    Route::get('response-details/exports/{id}/download', [ResponseDetailController::class, 'exportDownload']);
     // Route resources for response details
     Route::apiResource('response-details', ResponseDetailController::class);
 
