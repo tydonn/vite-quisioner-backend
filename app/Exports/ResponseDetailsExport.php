@@ -2,12 +2,14 @@
 
 namespace App\Exports;
 
+use App\Models\Quisioner\Choice;
 use App\Models\Quisioner\ResponseDetail;
 use App\Models\Siakad\Dosen;
-use App\Models\Siakad\Mahasiswa;
 use App\Models\Siakad\MataKuliah;
 use App\Models\Siakad\Prodi;
 use Generator;
+use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 use Maatwebsite\Excel\Concerns\FromGenerator;
 use Maatwebsite\Excel\Concerns\WithHeadings;
 
@@ -17,31 +19,24 @@ class ResponseDetailsExport implements FromGenerator, WithHeadings
         private readonly array $filters = [],
         private readonly int $chunkSize = 1000,
         private readonly bool $singleQuery = false
-    ) {
-    }
+    ) {}
 
     public function headings(): array
     {
         return [
-            'DetailID',
             'ResponID',
-            'AspectID',
-            'ChoiceID',
-            'AnswerText',
-            'AnswerNumber',
-            'TahunAkademik',
-            'Semester',
-            'DosenLogin',
-            'DosenNama',
-            'MahasiswaID',
-            'MahasiswaNama',
-            'MatakuliahID',
-            'MatakuliahNama',
             'ProdiID',
-            'ProdiNama',
-            'AspectText',
-            'ChoiceLabel',
-            'ChoiceValue',
+            'NamaProdi',
+            'DosenID',
+            'NamaDosen',
+            'MataKuliahID',
+            'MKKode',
+            'Nama Mata Kuliah',
+            'Tahun Akademik',
+            'Nama Category',
+            'Aspect Text',
+            'Answer Type',
+            'Choice Value',
         ];
     }
 
@@ -49,26 +44,26 @@ class ResponseDetailsExport implements FromGenerator, WithHeadings
     {
         if ($this->singleQuery) {
             foreach ($this->buildQuery()->orderBy('rd.DetailID')->cursor() as $row) {
+                $choiceValue = $this->normalizeChoiceValue(
+                    $row->ChoiceValueRaw ?? null,
+                    $row->ChoiceID ?? null,
+                    $row->AnswerNumber ?? null
+                );
+
                 yield [
-                    $row->DetailID,
                     $row->ResponID,
-                    $row->AspectID,
-                    $row->ChoiceID,
-                    $row->AnswerText,
-                    $row->AnswerNumber,
-                    $row->TahunAkademik,
-                    $row->Semester,
-                    $row->DosenID,
                     null,
-                    $row->MahasiswaID,
+                    null,
+                    $row->DosenID,
                     null,
                     $row->MatakuliahID,
                     null,
                     null,
-                    null,
+                    $row->TahunAkademik,
+                    $row->CategoryName,
                     $row->AspectText,
-                    $row->ChoiceLabel,
-                    $row->ChoiceValue,
+                    $row->AnswerType,
+                    $choiceValue,
                 ];
             }
 
@@ -89,19 +84,15 @@ class ResponseDetailsExport implements FromGenerator, WithHeadings
             }
 
             $dosenIds = $rows->pluck('DosenID')->filter()->unique()->values()->all();
-            $mahasiswaIds = $rows->pluck('MahasiswaID')->filter()->unique()->values()->all();
             $matakuliahIds = $rows->pluck('MatakuliahID')->filter()->unique()->values()->all();
+            $choiceIds = $rows->pluck('ChoiceID')->filter()->unique()->values()->all();
 
             $dosenMap = Dosen::query()
                 ->whereIn('Login', $dosenIds)
                 ->pluck('Nama', 'Login');
 
-            $mahasiswaMap = Mahasiswa::query()
-                ->whereIn('MhswID', $mahasiswaIds)
-                ->pluck('Nama', 'MhswID');
-
             $matakuliahRows = MataKuliah::query()
-                ->select(['MKID', 'Nama', 'ProdiID'])
+                ->select(['MKID', 'MKKode', 'Nama', 'ProdiID'])
                 ->whereIn('MKID', $matakuliahIds)
                 ->get();
 
@@ -111,31 +102,34 @@ class ResponseDetailsExport implements FromGenerator, WithHeadings
                 ->pluck('Nama', 'ProdiID');
 
             $matakuliahMap = $matakuliahRows->keyBy('MKID');
+            $choiceMap = Choice::query()
+                ->whereIn('ChoiceID', $choiceIds)
+                ->pluck('ChoiceValue', 'ChoiceID');
 
             foreach ($rows as $row) {
                 $matakuliah = $matakuliahMap->get($row->MatakuliahID);
                 $prodiId = optional($matakuliah)->ProdiID;
+                $choiceValue = $this->normalizeChoiceValue(
+                    $row->ChoiceValueRaw ?? null,
+                    $row->ChoiceID ?? null,
+                    $row->AnswerNumber ?? null,
+                    $choiceMap
+                );
 
                 yield [
-                    $row->DetailID,
                     $row->ResponID,
-                    $row->AspectID,
-                    $row->ChoiceID,
-                    $row->AnswerText,
-                    $row->AnswerNumber,
-                    $row->TahunAkademik,
-                    $row->Semester,
-                    $row->DosenID,
-                    $dosenMap[$row->DosenID] ?? null,
-                    $row->MahasiswaID,
-                    $mahasiswaMap[$row->MahasiswaID] ?? null,
-                    $row->MatakuliahID,
-                    optional($matakuliah)->Nama,
                     $prodiId,
                     $prodiMap[$prodiId] ?? null,
+                    $row->DosenID,
+                    $dosenMap[$row->DosenID] ?? null,
+                    $row->MatakuliahID,
+                    optional($matakuliah)->MKKode,
+                    optional($matakuliah)->Nama,
+                    $row->TahunAkademik,
+                    $row->CategoryName,
                     $row->AspectText,
-                    $row->ChoiceLabel,
-                    $row->ChoiceValue,
+                    $row->AnswerType,
+                    $choiceValue,
                 ];
             }
 
@@ -149,22 +143,20 @@ class ResponseDetailsExport implements FromGenerator, WithHeadings
             ->from('dk_tbl_response_detail as rd')
             ->join('dk_tbl_response as r', 'rd.ResponID', '=', 'r.ResponID')
             ->leftJoin('dk_tbl_question as q', 'rd.AspectID', '=', 'q.AspectID')
+            ->leftJoin('dk_tbl_category as cat', 'q.CategoryID', '=', 'cat.CategoryID')
             ->leftJoin('dk_tbl_choice as c', 'rd.ChoiceID', '=', 'c.ChoiceID')
             ->select([
                 'rd.DetailID as DetailID',
                 'rd.ResponID as ResponID',
-                'rd.AspectID as AspectID',
                 'rd.ChoiceID as ChoiceID',
-                'rd.AnswerText as AnswerText',
                 'rd.AnswerNumber as AnswerNumber',
                 'r.TahunAkademik as TahunAkademik',
-                'r.Semester as Semester',
                 'r.DosenID as DosenID',
-                'r.MahasiswaID as MahasiswaID',
                 'r.MatakuliahID as MatakuliahID',
                 'q.AspectText as AspectText',
-                'c.ChoiceLabel as ChoiceLabel',
-                'c.ChoiceValue as ChoiceValue',
+                'q.AnswerType as AnswerType',
+                'cat.CategoryName as CategoryName',
+                'c.ChoiceValue as ChoiceValueRaw',
             ]);
 
         if (!empty($this->filters['response_id'])) {
@@ -216,5 +208,38 @@ class ResponseDetailsExport implements FromGenerator, WithHeadings
         }
 
         return $query;
+    }
+
+    private function normalizeChoiceValue(
+        mixed $choiceValueRaw,
+        mixed $choiceId,
+        mixed $answerNumber,
+        mixed $choiceMap = null
+    ): mixed {
+        if ($choiceValueRaw !== null && $choiceValueRaw !== '') {
+            return $choiceValueRaw;
+        }
+
+        if ($choiceMap !== null && $choiceId !== null) {
+            $mapped = null;
+
+            if ($choiceMap instanceof Collection) {
+                $mapped = $choiceMap->get($choiceId);
+                if (($mapped === null || $mapped === '') && is_numeric($choiceId)) {
+                    $mapped = $choiceMap->get((int) $choiceId);
+                }
+                if ($mapped === null || $mapped === '') {
+                    $mapped = $choiceMap->get((string) $choiceId);
+                }
+            } elseif (is_array($choiceMap)) {
+                $mapped = $choiceMap[$choiceId] ?? null;
+            }
+
+            if ($mapped !== null && $mapped !== '') {
+                return $mapped;
+            }
+        }
+
+        return $answerNumber;
     }
 }

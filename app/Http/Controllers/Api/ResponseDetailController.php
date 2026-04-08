@@ -2,15 +2,19 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Exports\ResponseDetailExportAggregationV2;
 use App\Exports\ResponseDetailsExport;
+use App\Exports\ResponseDetailExportAgretion;
 use App\Http\Controllers\Controller;
 use App\Jobs\ExportResponseDetailsJob;
 use App\Models\ExportTask;
 use App\Models\Quisioner\ResponseDetail;
 use App\Models\Siakad\MataKuliah;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Storage;
 use Maatwebsite\Excel\Facades\Excel;
+use Illuminate\Support\Facades\DB;
 
 class ResponseDetailController extends Controller
 {
@@ -55,119 +59,194 @@ class ResponseDetailController extends Controller
             'aspect_id',
             'choice_id',
             'tahun_akademik',
+            'tahun_id',
+            'prodi_id',
             'nama_prodi',
+            'prodi',
             'matakuliah_id',
             'nama_matakuliah',
         ]);
+
+        // Alias compatibility for existing frontend params.
+        if (empty($filters['nama_prodi']) && !empty($filters['prodi'])) {
+            $filters['nama_prodi'] = $filters['prodi'];
+        }
+        if (empty($filters['tahun_akademik']) && !empty($filters['tahun_id'])) {
+            $filters['tahun_akademik'] = $filters['tahun_id'];
+        }
+
         $fileName = $this->buildExportFileName($filters, 'response-details');
-        $chunkSize = (int) $request->get('chunk_size', 1000);
-        if ($chunkSize < 100) {
-            $chunkSize = 100;
-        }
-        if ($chunkSize > 5000) {
-            $chunkSize = 5000;
-        }
-
-        $singleQuery = $request->boolean('single_query', false);
-
         return Excel::download(
-            new ResponseDetailsExport($filters, $chunkSize, $singleQuery),
+            new ResponseDetailExportAggregationV2($filters),
             $fileName
         );
     }
 
-    public function requestExport(Request $request)
+    /**
+     * GET /api/response-details/satisfaction-labels
+     */
+    public function satisfactionLabels(Request $request)
     {
-        $chunkSize = (int) $request->get('chunk_size', 1000);
-        if ($chunkSize < 100) {
-            $chunkSize = 100;
+        $labels = ['Sangat Puas', 'Puas'];
+
+        $query = ResponseDetail::query()
+            ->from('dk_tbl_response_detail as rd')
+            ->join('dk_tbl_response as r', 'rd.ResponID', '=', 'r.ResponID')
+            ->join('dk_tbl_choice as c', 'rd.ChoiceID', '=', 'c.ChoiceID');
+
+        if ($request->filled('response_id')) {
+            $query->where('rd.ResponID', $request->response_id);
         }
-        if ($chunkSize > 5000) {
-            $chunkSize = 5000;
+        if ($request->filled('aspect_id')) {
+            $query->where('rd.AspectID', $request->aspect_id);
         }
-
-        $filters = $request->only([
-            'response_id',
-            'aspect_id',
-            'choice_id',
-            'tahun_akademik',
-            'nama_prodi',
-            'matakuliah_id',
-            'nama_matakuliah',
-        ]);
-
-        $task = ExportTask::query()->create([
-            'user_id' => $request->user()?->id,
-            'type' => 'response-details',
-            'status' => 'queued',
-            'filters' => $filters,
-            'file_disk' => 'local',
-        ]);
-
-        ExportResponseDetailsJob::dispatch(
-            $task->id,
-            $filters,
-            $chunkSize,
-            $request->boolean('single_query', false)
-        );
-
-        return response()->json([
-            'success' => true,
-            'data' => [
-                'task_id' => $task->id,
-                'status' => $task->status,
-            ],
-        ], 202);
-    }
-
-    public function exportStatus(string $id)
-    {
-        $task = ExportTask::query()->findOrFail($id);
-
-        return response()->json([
-            'success' => true,
-            'data' => [
-                'task_id' => $task->id,
-                'status' => $task->status,
-                'error' => $task->error,
-                'file_path' => $task->status === 'completed' ? $task->file_path : null,
-                'started_at' => $task->started_at,
-                'completed_at' => $task->completed_at,
-            ],
-        ]);
-    }
-
-    public function exportDownload(string $id)
-    {
-        $task = ExportTask::query()->findOrFail($id);
-
-        if ($task->status !== 'completed' || !$task->file_path) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Export belum selesai',
-            ], 409);
+        if ($request->filled('choice_id')) {
+            $query->where('rd.ChoiceID', $request->choice_id);
         }
-
-        $disk = $task->file_disk ?: 'local';
-        if (!Storage::disk($disk)->exists($task->file_path)) {
-            return response()->json([
-                'success' => false,
-                'message' => 'File export tidak ditemukan',
-            ], 404);
+        if ($request->filled('tahun_akademik')) {
+            $query->where('r.TahunAkademik', $request->tahun_akademik);
         }
+        if ($request->filled('matakuliah_id')) {
+            $query->where('r.MatakuliahID', $request->matakuliah_id);
+        }
+        if ($request->filled('nama_matakuliah')) {
+            $mkIds = MataKuliah::query()
+                ->select(['MKID'])
+                ->where('Nama', 'like', '%' . $request->nama_matakuliah . '%')
+                ->pluck('MKID');
 
-        $downloadName = $this->buildExportFileName($task->filters ?? [], 'response-details');
-        if ($disk === 'local') {
-            return response()->download(
-                Storage::disk($disk)->path($task->file_path),
-                $downloadName
+            if ($mkIds->isEmpty()) {
+                return response()->json([
+                    'success' => true,
+                    'data' => [
+                        'percent' => 0,
+                        'total_answers' => 0,
+                        'positive_answers' => 0,
+                        'labels' => $labels,
+                    ],
+                ]);
+            }
+
+            $query->whereIn('r.MatakuliahID', $mkIds);
+        }
+        if ($request->filled('prodi_id') || $request->filled('nama_prodi')) {
+            $mkIds = $this->resolveMatakuliahIdsByProdi(
+                $request->input('prodi_id'),
+                $request->input('nama_prodi')
             );
+
+            if ($mkIds->isEmpty()) {
+                return response()->json([
+                    'success' => true,
+                    'data' => [
+                        'percent' => 0,
+                        'total_answers' => 0,
+                        'positive_answers' => 0,
+                        'labels' => $labels,
+                    ],
+                ]);
+            }
+
+            $query->whereIn('r.MatakuliahID', $mkIds);
+        }
+
+        $total = (clone $query)->count();
+        $positive = (clone $query)->whereIn('c.ChoiceLabel', $labels)->count();
+
+        $percent = $total > 0 ? round(($positive / $total) * 100, 2) : 0;
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'percent' => $percent,
+                'total_answers' => $total,
+                'positive_answers' => $positive,
+                'labels' => $labels,
+            ],
+        ]);
+    }
+
+    /**
+     * GET /api/response-details/label-counts
+     */
+    public function labelCounts(Request $request)
+    {
+        $labels = [
+            'Sangat Puas',
+            'Puas',
+            'Kurang Puas',
+            'Tidak Puas',
+        ];
+
+        $query = ResponseDetail::query()
+            ->from('dk_tbl_response_detail as rd')
+            ->join('dk_tbl_response as r', 'rd.ResponID', '=', 'r.ResponID')
+            ->join('dk_tbl_choice as c', 'rd.ChoiceID', '=', 'c.ChoiceID');
+
+        if ($request->filled('response_id')) {
+            $query->where('rd.ResponID', $request->response_id);
+        }
+        if ($request->filled('aspect_id')) {
+            $query->where('rd.AspectID', $request->aspect_id);
+        }
+        if ($request->filled('choice_id')) {
+            $query->where('rd.ChoiceID', $request->choice_id);
+        }
+        if ($request->filled('tahun_akademik')) {
+            $query->where('r.TahunAkademik', $request->tahun_akademik);
+        }
+        if ($request->filled('matakuliah_id')) {
+            $query->where('r.MatakuliahID', $request->matakuliah_id);
+        }
+        if ($request->filled('nama_matakuliah')) {
+            $mkIds = MataKuliah::query()
+                ->select(['MKID'])
+                ->where('Nama', 'like', '%' . $request->nama_matakuliah . '%')
+                ->pluck('MKID');
+
+            if ($mkIds->isEmpty()) {
+                return response()->json([
+                    'success' => true,
+                    'data' => array_fill_keys($labels, 0),
+                ]);
+            }
+
+            $query->whereIn('r.MatakuliahID', $mkIds);
+        }
+        if ($request->filled('prodi_id') || $request->filled('nama_prodi')) {
+            $mkIds = $this->resolveMatakuliahIdsByProdi(
+                $request->input('prodi_id'),
+                $request->input('nama_prodi')
+            );
+
+            if ($mkIds->isEmpty()) {
+                return response()->json([
+                    'success' => true,
+                    'data' => array_fill_keys($labels, 0),
+                ]);
+            }
+
+            $query->whereIn('r.MatakuliahID', $mkIds);
+        }
+
+        $rows = (clone $query)
+            ->whereIn('c.ChoiceLabel', $labels)
+            ->select([
+                'c.ChoiceLabel as label',
+                DB::raw('COUNT(*) as total'),
+            ])
+            ->groupBy('c.ChoiceLabel')
+            ->get();
+
+        $data = array_fill_keys($labels, 0);
+        foreach ($rows as $row) {
+            $data[$row->label] = (int) $row->total;
         }
 
         return response()->json([
-            'success' => false,
-            'message' => 'Download hanya tersedia untuk disk local',
-        ], 400);
+            'success' => true,
+            'data' => $data,
+        ]);
     }
 
     /**
@@ -277,20 +356,18 @@ class ResponseDetailController extends Controller
                 'ResponID',
                 'AspectID',
                 'ChoiceID',
-                'AnswerText',
-                'AnswerNumber',
             ])
             ->orderBy('DetailID');
 
         if ($withRelations) {
             $query->with([
                 'response:ResponID,MahasiswaID,DosenID,MatakuliahID,TahunAkademik,Semester',
-                'response.dosen:Login,Nama',
-                'response.mahasiswa:MhswID,Nama',
+                // 'response.dosen:Login,Nama',
+                // 'response.mahasiswa:MhswID,Nama',
                 'response.matakuliah:MKID,Nama,ProdiID',
                 'response.matakuliah.prodi:ProdiID,Nama',
-                'question:AspectID,CategoryID,AspectText,AnswerType',
-                'choice:ChoiceID,ChoiceLabel,ChoiceValue',
+                'question:AspectID,AspectText,AnswerType',
+                'choice:ChoiceID,ChoiceValue',
             ]);
         }
 
@@ -312,13 +389,11 @@ class ResponseDetailController extends Controller
             });
         }
 
-        if ($request->filled('nama_prodi')) {
-            $mkIds = MataKuliah::query()
-                ->select(['MKID'])
-                ->whereHas('prodi', function ($subQuery) use ($request) {
-                    $subQuery->where('Nama', 'like', '%' . $request->nama_prodi . '%');
-                })
-                ->pluck('MKID');
+        if ($request->filled('prodi_id') || $request->filled('nama_prodi')) {
+            $mkIds = $this->resolveMatakuliahIdsByProdi(
+                $request->input('prodi_id'),
+                $request->input('nama_prodi')
+            );
 
             if ($mkIds->isEmpty()) {
                 $query->whereRaw('1 = 0');
@@ -353,6 +428,21 @@ class ResponseDetailController extends Controller
         return $query;
     }
 
+    private function resolveMatakuliahIdsByProdi(mixed $prodiId, mixed $namaProdi): Collection
+    {
+        $query = MataKuliah::query()->select(['MKID']);
+
+        if (!empty($prodiId)) {
+            $query->where('ProdiID', $prodiId);
+        } elseif (!empty($namaProdi)) {
+            $query->whereHas('prodi', function ($subQuery) use ($namaProdi) {
+                $subQuery->where('Nama', 'like', '%' . $namaProdi . '%');
+            });
+        }
+
+        return $query->pluck('MKID');
+    }
+
     private function buildExportFileName(array $filters, string $prefix): string
     {
         $parts = [];
@@ -360,8 +450,14 @@ class ResponseDetailController extends Controller
         if (!empty($filters['tahun_akademik'])) {
             $parts[] = 'TA-' . $filters['tahun_akademik'];
         }
+        if (!empty($filters['tahun_id'])) {
+            $parts[] = 'THN-' . $filters['tahun_id'];
+        }
         if (!empty($filters['semester'])) {
             $parts[] = 'SEM-' . $filters['semester'];
+        }
+        if (!empty($filters['prodi_id'])) {
+            $parts[] = 'PRODIID-' . $filters['prodi_id'];
         }
         if (!empty($filters['nama_prodi'])) {
             $parts[] = 'PRODI-' . $filters['nama_prodi'];
@@ -395,5 +491,4 @@ class ResponseDetailController extends Controller
 
         return $base . '.xlsx';
     }
-
 }

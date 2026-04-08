@@ -10,6 +10,75 @@ use Illuminate\Http\Request;
 
 class ResponseController extends Controller
 {
+    public function countRespondents(Request $request)
+    {
+        $query = Response::query();
+
+        if ($request->filled('respon_id')) {
+            $query->where('ResponID', $request->respon_id);
+        }
+        if ($request->filled('mahasiswa_id')) {
+            $query->where('MahasiswaID', $request->mahasiswa_id);
+        }
+        if ($request->filled('dosen_id')) {
+            $query->where('DosenID', $request->dosen_id);
+        }
+        if ($request->filled('matakuliah_id')) {
+            $query->where('MatakuliahID', $request->matakuliah_id);
+        }
+        if ($request->filled('prodi_id') || $request->filled('nama_prodi')) {
+            $mkQuery = MataKuliah::query()->select(['MKID']);
+
+            if ($request->filled('prodi_id')) {
+                $mkQuery->where('ProdiID', $request->prodi_id);
+            }
+
+            if ($request->filled('nama_prodi')) {
+                $mkQuery->whereHas('prodi', function ($subQuery) use ($request) {
+                    $subQuery->where('Nama', 'like', '%' . $request->nama_prodi . '%');
+                });
+            }
+
+            $mkIds = $mkQuery->pluck('MKID');
+
+            if ($mkIds->isEmpty()) {
+                return response()->json([
+                    'success' => true,
+                    'data' => [
+                        'respondents' => 0,
+                    ],
+                ]);
+            }
+
+            $query->whereIn('MatakuliahID', $mkIds);
+        }
+        if ($request->filled('tahun_akademik')) {
+            $query->where('TahunAkademik', $request->tahun_akademik);
+        }
+        if ($request->filled('semester')) {
+            $query->where('Semester', $request->semester);
+        }
+        if ($request->filled('created_at')) {
+            $query->whereDate('CreatedAt', $request->created_at);
+        }
+        if ($request->filled('created_at_from')) {
+            $query->whereDate('CreatedAt', '>=', $request->created_at_from);
+        }
+        if ($request->filled('created_at_to')) {
+            $query->whereDate('CreatedAt', '<=', $request->created_at_to);
+        }
+
+        $count = $query->whereNotNull('MahasiswaID')
+            ->distinct()
+            ->count('MahasiswaID');
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'respondents' => $count,
+            ],
+        ]);
+    }
     public function prodiOptions(Request $request)
     {
         $matakuliahIds = Response::query()
@@ -119,7 +188,6 @@ class ResponseController extends Controller
         if ($withRelations) {
             $query->with([
                 'dosen:Login,Nama',
-                'mahasiswa:MhswID,Nama',
                 'matakuliah:MKID,MKKode,Nama,ProdiID',
                 'matakuliah.prodi:ProdiID,Nama',
             ]);

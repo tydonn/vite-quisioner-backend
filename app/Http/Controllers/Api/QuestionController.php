@@ -64,6 +64,28 @@ class QuestionController extends Controller
     }
 
     /**
+     * GET /api/questions/count
+     */
+    public function count(Request $request)
+    {
+        $query = Question::query();
+
+        if ($request->filled('category_id')) {
+            $query->where('CategoryID', $request->category_id);
+        }
+        if ($request->filled('active')) {
+            $query->where('IsActive', $request->active);
+        }
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'total' => $query->count(),
+            ],
+        ]);
+    }
+
+    /**
      * GET /api/questions/{id}
      */
     public function show($id)

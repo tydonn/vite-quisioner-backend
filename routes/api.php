@@ -3,6 +3,7 @@
 use App\Http\Controllers\Api\CategoryController;
 use App\Http\Controllers\Api\ChoiceController;
 use App\Http\Controllers\Api\ChoiceTypeController;
+use App\Http\Controllers\Api\HealthController;
 use App\Http\Controllers\Api\QuestionController;
 use App\Http\Controllers\Api\ResponseController;
 use App\Http\Controllers\Api\ResponseDetailController;
@@ -26,6 +27,10 @@ Route::middleware('auth:sanctum')->get('/me', function (Request $request) {
 
 // Auth routes
 Route::post('/login', [AuthController::class, 'login']);
+
+// Health check (no role check)
+
+
 Route::middleware('auth:sanctum')->group(function () {
     Route::post('/logout', function (Request $request) {
         $request->user()->currentAccessToken()->delete();
@@ -37,8 +42,10 @@ Route::middleware('auth:sanctum')->group(function () {
     });
 
     // // Routes resources for categories
+    Route::get('categories/count', [CategoryController::class, 'count']);
     Route::apiResource('categories', CategoryController::class);
     // Route resources for questions
+    Route::get('questions/count', [QuestionController::class, 'count']);
     Route::apiResource('questions', QuestionController::class);
     // Route resources for choices
     Route::apiResource('choices', ChoiceController::class);
@@ -47,19 +54,26 @@ Route::middleware('auth:sanctum')->group(function () {
     // Route options for response filters (dropdown)
     Route::get('responses/filter-options/prodi', [ResponseController::class, 'prodiOptions']);
     Route::get('responses/filter-options/matakuliah', [ResponseController::class, 'matakuliahOptions']);
+    Route::get('responses/count-respondents', [ResponseController::class, 'countRespondents']);
     // Route resources for responses
     Route::apiResource('responses', ResponseController::class);
     // Route download response details (must be above apiResource)
     Route::get('response-details/download', [ResponseDetailController::class, 'download']);
-    // Async export response details
-    Route::post('response-details/exports', [ResponseDetailController::class, 'requestExport']);
-    Route::get('response-details/exports/{id}', [ResponseDetailController::class, 'exportStatus']);
-    Route::get('response-details/exports/{id}/download', [ResponseDetailController::class, 'exportDownload']);
+    Route::get('response-details/satisfaction-labels', [ResponseDetailController::class, 'satisfactionLabels']);
+    Route::get('response-details/label-counts', [ResponseDetailController::class, 'labelCounts']);
+    // // Async export response details
+    // Route::post('response-details/exports', [ResponseDetailController::class, 'requestExport']);
+    // Route::get('response-details/exports/{id}', [ResponseDetailController::class, 'exportStatus']);
+    // Route::get('response-details/exports/{id}/download', [ResponseDetailController::class, 'exportDownload']);
     // Route resources for response details
     Route::apiResource('response-details', ResponseDetailController::class);
 
     // Route for dosen (siakad)
     Route::apiResource('dosen', DosenController::class);
+
+    // Health check routes
+    Route::get('/health/db/quisioner', [HealthController::class, 'db']);
+    Route::get('/health/db/siakad', [HealthController::class, 'dbSiakad']);
 });
 
 // Route::get('/test-siakad', function () {

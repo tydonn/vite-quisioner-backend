@@ -5,6 +5,8 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Quisioner\Category;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 
 class CategoryController extends Controller
 {
@@ -35,8 +37,19 @@ class CategoryController extends Controller
             ? $query->paginate($perPage)
             : $query->simplePaginate($perPage);
 
+        $dbOk = true;
+        try {
+            DB::connection('quisioner')->getPdo();
+        } catch (\Throwable $e) {
+            $dbOk = false;
+        }
+
         return response()->json([
             'success' => true,
+            'db_connection' => config('database.connections.quisioner.host'),
+            'db_port' => config('database.connections.quisioner.port'),
+            'db_connection_ok' => $dbOk,
+            'db_port_ok' => $dbOk,
             'data' => $result->items(),
             'pagination' => [
                 'current_page' => $result->currentPage(),
@@ -44,6 +57,29 @@ class CategoryController extends Controller
                 'total' => $includeTotal ? $result->total() : null,
                 'last_page' => $includeTotal ? $result->lastPage() : null,
                 'has_more' => $result->hasMorePages(),
+            ],
+        ]);
+    }
+
+    /**
+     * GET /api/categories/count
+     */
+    public function count(Request $request)
+    {
+        $active = $request->filled('active') ? (string) $request->active : 'all';
+        $cacheKey = 'categories:count:' . $active;
+        $ttlSeconds = 300;
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'total' => Cache::remember($cacheKey, $ttlSeconds, function () use ($request) {
+                    $query = Category::query();
+                    if ($request->filled('active')) {
+                        $query->where('IsActive', $request->active);
+                    }
+                    return $query->count();
+                }),
             ],
         ]);
     }

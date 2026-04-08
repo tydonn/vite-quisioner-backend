@@ -21,6 +21,11 @@ class ResponseDetail extends Model
         'AnswerNumber',
     ];
 
+    protected $appends = [
+        'choice_value',
+        'choice_label',
+    ];
+
     public function response()
     {
         return $this->belongsTo(Response::class, 'ResponID', 'ResponID');
@@ -34,5 +39,23 @@ class ResponseDetail extends Model
     public function choice()
     {
         return $this->belongsTo(Choice::class, 'ChoiceID', 'ChoiceID');
+    }
+
+    public function getChoiceValueAttribute()
+    {
+        if (!$this->relationLoaded('choice')) {
+            return null;
+        }
+
+        return $this->choice?->ChoiceValue;
+    }
+
+    public function getChoiceLabelAttribute()
+    {
+        if (!$this->relationLoaded('choice')) {
+            return null;
+        }
+
+        return $this->choice?->ChoiceLabel;
     }
 }
