@@ -2,6 +2,9 @@
 
 namespace App\Providers;
 
+use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -19,6 +22,11 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        //
+        RateLimiter::for('jwt-login', function (Request $request) {
+            $maxAttempts = (int) env('JWT_LOGIN_RATE_LIMIT', 5);
+            $decayMinutes = (int) env('JWT_LOGIN_RATE_LIMIT_MINUTES', 1);
+
+            return Limit::perMinutes($decayMinutes, $maxAttempts)->by($request->ip());
+        });
     }
 }
