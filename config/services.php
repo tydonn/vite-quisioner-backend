@@ -35,4 +35,14 @@ return [
         ],
     ],
 
+    'web_a_sso' => [
+        'secret' => env('WEB_A_SSO_SECRET', ''),
+        'issuer' => env('WEB_A_SSO_ISSUER', ''),
+        'audience' => env('WEB_A_SSO_AUDIENCE', ''),
+        'leeway' => (int) env('WEB_A_SSO_LEEWAY', 5),
+        'timestamp_tolerance' => (int) env('WEB_A_SSO_TIMESTAMP_TOLERANCE', 60),
+        'nonce_ttl' => (int) env('WEB_A_SSO_NONCE_TTL', 300),
+        'code_ttl' => (int) env('WEB_A_SSO_CODE_TTL', 60),
+    ],
+
 ];

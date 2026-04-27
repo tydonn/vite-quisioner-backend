@@ -28,5 +28,19 @@ class AppServiceProvider extends ServiceProvider
 
             return Limit::perMinutes($decayMinutes, $maxAttempts)->by($request->ip());
         });
+
+        RateLimiter::for('sso-init', function (Request $request) {
+            $maxAttempts = (int) env('SSO_INIT_RATE_LIMIT', 30);
+            $decayMinutes = (int) env('SSO_INIT_RATE_LIMIT_MINUTES', 1);
+
+            return Limit::perMinutes($decayMinutes, $maxAttempts)->by($request->ip());
+        });
+
+        RateLimiter::for('sso-exchange', function (Request $request) {
+            $maxAttempts = (int) env('SSO_EXCHANGE_RATE_LIMIT', 60);
+            $decayMinutes = (int) env('SSO_EXCHANGE_RATE_LIMIT_MINUTES', 1);
+
+            return Limit::perMinutes($decayMinutes, $maxAttempts)->by($request->ip());
+        });
     }
 }

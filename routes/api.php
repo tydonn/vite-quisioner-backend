@@ -9,6 +9,7 @@ use App\Http\Controllers\Api\QuestionController;
 use App\Http\Controllers\Api\ResponseController;
 use App\Http\Controllers\Api\ResponseDetailController;
 use App\Http\Controllers\Api\Siakad\DosenController;
+use App\Http\Controllers\AuthSSOController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -31,6 +32,8 @@ Route::post('/login', function () {
         'message' => 'Endpoint deprecated. Use /api/jwt/login.',
     ], 410);
 });
+Route::post('/jwt/sso/init', [AuthSSOController::class, 'init'])->middleware('throttle:sso-init');
+Route::post('/jwt/sso/exchange', [AuthSSOController::class, 'exchange'])->middleware('throttle:sso-exchange');
 Route::post('/jwt/login', [JwtAuthController::class, 'login'])->middleware('throttle:jwt-login');
 Route::middleware('auth:jwt')->prefix('jwt')->group(function () {
     Route::get('/me', [JwtAuthController::class, 'me']);
