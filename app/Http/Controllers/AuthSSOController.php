@@ -167,6 +167,8 @@ class AuthSSOController extends Controller
             'access_token' => $token,
             'token_type' => 'Bearer',
             'expires_in' => auth('jwt')->factory()->getTTL() * 60,
+            'program_code' => $ssoSession['program_code'] ?? null,
+            'roles' => $ssoSession['roles'] ?? [],
             'user' => [
                 'id' => $user->id,
                 'name' => $user->name,
