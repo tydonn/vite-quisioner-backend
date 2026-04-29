@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\User;
+use App\Models\Siakad\Prodi;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -153,7 +154,20 @@ class AuthSSOController extends Controller
             ], 401);
         }
 
-        $token = auth('jwt')->login($user);
+        $roles = $ssoSession['roles'] ?? [];
+        $programCode = $ssoSession['program_code'] ?? null;
+        $programName = null;
+        if (!empty($programCode)) {
+            $programName = Prodi::query()
+                ->where('ProdiID', $programCode)
+                ->value('Nama');
+        }
+        $token = auth('jwt')->claims([
+            'roles' => $roles,
+            'program_code' => $programCode,
+            'program_name' => $programName,
+            'issuer' => $ssoSession['issuer'] ?? null,
+        ])->login($user);
 
         Log::info('sso.exchange.success', [
             'issuer' => $ssoSession['issuer'] ?? null,
@@ -167,8 +181,9 @@ class AuthSSOController extends Controller
             'access_token' => $token,
             'token_type' => 'Bearer',
             'expires_in' => auth('jwt')->factory()->getTTL() * 60,
-            'program_code' => $ssoSession['program_code'] ?? null,
-            'roles' => $ssoSession['roles'] ?? [],
+            'program_code' => $programCode,
+            'program_name' => $programName,
+            'roles' => $roles,
             'user' => [
                 'id' => $user->id,
                 'name' => $user->name,

@@ -36,7 +36,7 @@ class ResponseDetailExportAgretion implements FromGenerator, WithHeadings
     public function generator(): Generator
     {
         $tahunId = $this->filters['tahun_akademik'] ?? $this->filters['tahun_id'] ?? null;
-        $prodiId = $this->filters['prodi_id'] ?? null;
+        $prodiId = $this->filters['prodi_id'] ?? $this->filters['program_code'] ?? null;
 
         if (empty($prodiId) && !empty($this->filters['nama_prodi'])) {
             $prodiId = Prodi::query()

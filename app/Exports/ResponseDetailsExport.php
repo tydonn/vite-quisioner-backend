@@ -189,6 +189,18 @@ class ResponseDetailsExport implements FromGenerator, WithHeadings
                 $query->whereIn('r.MatakuliahID', $mkIds);
             }
         }
+        if (!empty($this->filters['program_code'])) {
+            $mkIds = MataKuliah::query()
+                ->select(['MKID'])
+                ->where('ProdiID', $this->filters['program_code'])
+                ->pluck('MKID');
+
+            if ($mkIds->isEmpty()) {
+                $query->whereRaw('1 = 0');
+            } else {
+                $query->whereIn('r.MatakuliahID', $mkIds);
+            }
+        }
 
         if (!empty($this->filters['matakuliah_id'])) {
             $query->where('r.MatakuliahID', $this->filters['matakuliah_id']);

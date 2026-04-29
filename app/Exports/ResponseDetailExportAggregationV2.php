@@ -205,6 +205,16 @@ class ResponseDetailExportAggregationV2 implements FromGenerator, WithHeadings
             $resultIds = $this->intersectIds($resultIds, $ids);
         }
 
+        if (!empty($this->filters['program_code'])) {
+            $ids = MataKuliah::query()
+                ->where('ProdiID', $this->filters['program_code'])
+                ->pluck('MKID')
+                ->map(fn($value) => (string) $value)
+                ->all();
+
+            $resultIds = $this->intersectIds($resultIds, $ids);
+        }
+
         if (empty($this->filters['prodi_id']) && !empty($namaProdi)) {
             $ids = MataKuliah::query()
                 ->whereHas('prodi', function ($query) use ($namaProdi) {

@@ -7,12 +7,21 @@ use App\Models\Quisioner\Response;
 use App\Models\Siakad\MataKuliah;
 use App\Models\Siakad\Prodi;
 use Illuminate\Http\Request;
+use App\Support\ProgramScope;
 
 class ResponseController extends Controller
 {
+    use ProgramScope;
+
     public function countRespondents(Request $request)
     {
+        $scope = $this->resolveProgramScope();
+        if (!$scope['is_administrator'] && !$scope['is_legacy_token'] && empty($scope['program_code'])) {
+            return $this->unauthorizedProgramScopeResponse();
+        }
+
         $query = Response::query();
+        $this->applyProgramScopeToResponseQuery($query, $scope['program_code'], $scope['is_administrator'], $scope['is_legacy_token']);
 
         if ($request->filled('respon_id')) {
             $query->where('ResponID', $request->respon_id);
@@ -81,7 +90,15 @@ class ResponseController extends Controller
     }
     public function prodiOptions(Request $request)
     {
+        $scope = $this->resolveProgramScope();
+        if (!$scope['is_administrator'] && !$scope['is_legacy_token'] && empty($scope['program_code'])) {
+            return $this->unauthorizedProgramScopeResponse();
+        }
+
         $matakuliahIds = Response::query()
+            ->when(!$scope['is_administrator'] && !$scope['is_legacy_token'], function ($query) use ($scope) {
+                $this->applyProgramScopeToResponseQuery($query, $scope['program_code'], false, false);
+            })
             ->when($request->filled('tahun_akademik'), function ($query) use ($request) {
                 $query->where('TahunAkademik', $request->tahun_akademik);
             })
@@ -121,7 +138,15 @@ class ResponseController extends Controller
 
     public function matakuliahOptions(Request $request)
     {
+        $scope = $this->resolveProgramScope();
+        if (!$scope['is_administrator'] && !$scope['is_legacy_token'] && empty($scope['program_code'])) {
+            return $this->unauthorizedProgramScopeResponse();
+        }
+
         $matakuliahIds = Response::query()
+            ->when(!$scope['is_administrator'] && !$scope['is_legacy_token'], function ($query) use ($scope) {
+                $this->applyProgramScopeToResponseQuery($query, $scope['program_code'], false, false);
+            })
             ->when($request->filled('tahun_akademik'), function ($query) use ($request) {
                 $query->where('TahunAkademik', $request->tahun_akademik);
             })
@@ -171,7 +196,11 @@ class ResponseController extends Controller
      */
     public function index(Request $request)
     {
-        //
+        $scope = $this->resolveProgramScope();
+        if (!$scope['is_administrator'] && !$scope['is_legacy_token'] && empty($scope['program_code'])) {
+            return $this->unauthorizedProgramScopeResponse();
+        }
+
         $withRelations = $request->boolean('with_relations', true);
         $query = Response::query()
             ->select([
@@ -184,6 +213,7 @@ class ResponseController extends Controller
                 'CreatedAt',
             ])
             ->orderBy('ResponID');
+        $this->applyProgramScopeToResponseQuery($query, $scope['program_code'], $scope['is_administrator'], $scope['is_legacy_token']);
 
         if ($withRelations) {
             $query->with([
@@ -320,13 +350,20 @@ class ResponseController extends Controller
      */
     public function show(string $id)
     {
-        //
-        $response = Response::with([
+        $scope = $this->resolveProgramScope();
+        if (!$scope['is_administrator'] && !$scope['is_legacy_token'] && empty($scope['program_code'])) {
+            return $this->unauthorizedProgramScopeResponse();
+        }
+
+        $query = Response::with([
             'dosen:Login,Nama',
             'mahasiswa:MhswID,Nama',
             'matakuliah:MKID,MKKode,Nama,ProdiID',
             'matakuliah.prodi:ProdiID,Nama',
-        ])->findOrFail($id);
+        ]);
+        $this->applyProgramScopeToResponseQuery($query, $scope['program_code'], $scope['is_administrator'], $scope['is_legacy_token']);
+
+        $response = $query->findOrFail($id);
 
         return response()->json([
             'success' => true,
@@ -379,5 +416,24 @@ class ResponseController extends Controller
             'success' => true,
             'message' => 'Response deleted',
         ]);
+    }
+
+    private function applyProgramScopeToResponseQuery($query, ?string $programCode, bool $isAdministrator, bool $isLegacyToken): void
+    {
+        if ($isAdministrator || $isLegacyToken || empty($programCode)) {
+            return;
+        }
+
+        $mkIds = MataKuliah::query()
+            ->select(['MKID'])
+            ->where('ProdiID', $programCode)
+            ->pluck('MKID');
+
+        if ($mkIds->isEmpty()) {
+            $query->whereRaw('1 = 0');
+            return;
+        }
+
+        $query->whereIn('MatakuliahID', $mkIds);
     }
 }

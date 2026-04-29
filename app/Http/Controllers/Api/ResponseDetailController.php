@@ -10,6 +10,7 @@ use App\Jobs\ExportResponseDetailsJob;
 use App\Models\ExportTask;
 use App\Models\Quisioner\ResponseDetail;
 use App\Models\Siakad\MataKuliah;
+use App\Support\ProgramScope;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Storage;
@@ -18,13 +19,20 @@ use Illuminate\Support\Facades\DB;
 
 class ResponseDetailController extends Controller
 {
+    use ProgramScope;
+
     /**
      * Display a listing of the resource.
      */
     public function index(Request $request)
     {
+        $scope = $this->resolveProgramScope();
+        if (!$scope['is_administrator'] && !$scope['is_legacy_token'] && empty($scope['program_code'])) {
+            return $this->unauthorizedProgramScopeResponse();
+        }
+
         $withRelations = $request->boolean('with_relations', true);
-        $query = $this->buildFilteredQuery($request, $withRelations);
+        $query = $this->buildFilteredQuery($request, $withRelations, $scope['program_code'], $scope['is_administrator'], $scope['is_legacy_token']);
 
         $perPage = (int) $request->get('per_page', 100);
         if ($perPage < 1) {
@@ -54,6 +62,11 @@ class ResponseDetailController extends Controller
 
     public function download(Request $request)
     {
+        $scope = $this->resolveProgramScope();
+        if (!$scope['is_administrator'] && !$scope['is_legacy_token'] && empty($scope['program_code'])) {
+            return $this->unauthorizedProgramScopeResponse();
+        }
+
         $filters = $request->only([
             'response_id',
             'aspect_id',
@@ -74,6 +87,10 @@ class ResponseDetailController extends Controller
         if (empty($filters['tahun_akademik']) && !empty($filters['tahun_id'])) {
             $filters['tahun_akademik'] = $filters['tahun_id'];
         }
+        if (!$scope['is_administrator'] && !$scope['is_legacy_token']) {
+            $filters['program_code'] = $scope['program_code'];
+            $filters['prodi_id'] = $scope['program_code'];
+        }
 
         $fileName = $this->buildExportFileName($filters, 'response-details');
         return Excel::download(
@@ -87,12 +104,18 @@ class ResponseDetailController extends Controller
      */
     public function satisfactionLabels(Request $request)
     {
+        $scope = $this->resolveProgramScope();
+        if (!$scope['is_administrator'] && !$scope['is_legacy_token'] && empty($scope['program_code'])) {
+            return $this->unauthorizedProgramScopeResponse();
+        }
+
         $labels = ['Sangat Puas', 'Puas'];
 
         $query = ResponseDetail::query()
             ->from('dk_tbl_response_detail as rd')
             ->join('dk_tbl_response as r', 'rd.ResponID', '=', 'r.ResponID')
             ->join('dk_tbl_choice as c', 'rd.ChoiceID', '=', 'c.ChoiceID');
+        $this->applyProgramScopeToJoinedResponseQuery($query, $scope['program_code'], $scope['is_administrator'], $scope['is_legacy_token']);
 
         if ($request->filled('response_id')) {
             $query->where('rd.ResponID', $request->response_id);
@@ -171,6 +194,11 @@ class ResponseDetailController extends Controller
      */
     public function labelCounts(Request $request)
     {
+        $scope = $this->resolveProgramScope();
+        if (!$scope['is_administrator'] && !$scope['is_legacy_token'] && empty($scope['program_code'])) {
+            return $this->unauthorizedProgramScopeResponse();
+        }
+
         $labels = [
             'Sangat Puas',
             'Puas',
@@ -182,6 +210,7 @@ class ResponseDetailController extends Controller
             ->from('dk_tbl_response_detail as rd')
             ->join('dk_tbl_response as r', 'rd.ResponID', '=', 'r.ResponID')
             ->join('dk_tbl_choice as c', 'rd.ChoiceID', '=', 'c.ChoiceID');
+        $this->applyProgramScopeToJoinedResponseQuery($query, $scope['program_code'], $scope['is_administrator'], $scope['is_legacy_token']);
 
         if ($request->filled('response_id')) {
             $query->where('rd.ResponID', $request->response_id);
@@ -284,8 +313,12 @@ class ResponseDetailController extends Controller
      */
     public function show(string $id)
     {
-        //
-        $responseDetail = ResponseDetail::with([
+        $scope = $this->resolveProgramScope();
+        if (!$scope['is_administrator'] && !$scope['is_legacy_token'] && empty($scope['program_code'])) {
+            return $this->unauthorizedProgramScopeResponse();
+        }
+
+        $query = ResponseDetail::with([
             'response:ResponID,MahasiswaID,DosenID,MatakuliahID,TahunAkademik,Semester',
             'response.dosen:Login,Nama',
             'response.mahasiswa:MhswID,Nama',
@@ -293,7 +326,10 @@ class ResponseDetailController extends Controller
             'response.matakuliah.prodi:ProdiID,Nama',
             'question:AspectID,CategoryID,AspectText,AnswerType',
             'choice:ChoiceID,ChoiceLabel,ChoiceValue',
-        ])->findOrFail($id);
+        ]);
+        $this->applyProgramScopeToDetailQuery($query, $scope['program_code'], $scope['is_administrator'], $scope['is_legacy_token']);
+
+        $responseDetail = $query->findOrFail($id);
 
         return response()->json([
             'success' => true,
@@ -348,7 +384,13 @@ class ResponseDetailController extends Controller
         ]);
     }
 
-    private function buildFilteredQuery(Request $request, bool $withRelations = true)
+    private function buildFilteredQuery(
+        Request $request,
+        bool $withRelations = true,
+        ?string $programCode = null,
+        bool $isAdministrator = false,
+        bool $isLegacyToken = false
+    )
     {
         $query = ResponseDetail::query()
             ->select([
@@ -358,6 +400,7 @@ class ResponseDetailController extends Controller
                 'ChoiceID',
             ])
             ->orderBy('DetailID');
+        $this->applyProgramScopeToDetailQuery($query, $programCode, $isAdministrator, $isLegacyToken);
 
         if ($withRelations) {
             $query->with([
@@ -426,6 +469,46 @@ class ResponseDetailController extends Controller
         }
 
         return $query;
+    }
+
+    private function applyProgramScopeToDetailQuery($query, ?string $programCode, bool $isAdministrator, bool $isLegacyToken): void
+    {
+        if ($isAdministrator || $isLegacyToken || empty($programCode)) {
+            return;
+        }
+
+        $mkIds = MataKuliah::query()
+            ->select(['MKID'])
+            ->where('ProdiID', $programCode)
+            ->pluck('MKID');
+
+        if ($mkIds->isEmpty()) {
+            $query->whereRaw('1 = 0');
+            return;
+        }
+
+        $query->whereHas('response', function ($subQuery) use ($mkIds) {
+            $subQuery->whereIn('MatakuliahID', $mkIds);
+        });
+    }
+
+    private function applyProgramScopeToJoinedResponseQuery($query, ?string $programCode, bool $isAdministrator, bool $isLegacyToken): void
+    {
+        if ($isAdministrator || $isLegacyToken || empty($programCode)) {
+            return;
+        }
+
+        $mkIds = MataKuliah::query()
+            ->select(['MKID'])
+            ->where('ProdiID', $programCode)
+            ->pluck('MKID');
+
+        if ($mkIds->isEmpty()) {
+            $query->whereRaw('1 = 0');
+            return;
+        }
+
+        $query->whereIn('r.MatakuliahID', $mkIds);
     }
 
     private function resolveMatakuliahIdsByProdi(mixed $prodiId, mixed $namaProdi): Collection
