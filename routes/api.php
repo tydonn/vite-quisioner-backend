@@ -8,6 +8,7 @@ use App\Http\Controllers\Api\JwtAuthController;
 use App\Http\Controllers\Api\QuestionController;
 use App\Http\Controllers\Api\ResponseController;
 use App\Http\Controllers\Api\ResponseDetailController;
+use App\Http\Controllers\Api\ResponseDetailResultController;
 use App\Http\Controllers\Api\Siakad\DosenController;
 use App\Http\Controllers\AuthSSOController;
 use Illuminate\Http\Request;
@@ -60,6 +61,7 @@ Route::middleware('auth:jwt')->prefix('jwt')->group(function () {
     Route::get('response-details/download', [ResponseDetailController::class, 'download']);
     Route::get('response-details/satisfaction-labels', [ResponseDetailController::class, 'satisfactionLabels']);
     Route::get('response-details/label-counts', [ResponseDetailController::class, 'labelCounts']);
+    Route::get('response-details/result-by-dosen', [ResponseDetailResultController::class, 'index']);
     Route::get('response-details/{response_detail}', [ResponseDetailController::class, 'show']);
 
     // Health check routes
