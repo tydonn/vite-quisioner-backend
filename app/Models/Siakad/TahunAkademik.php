@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Models\Sia;
+namespace App\Models\Siakad;
 
 use Illuminate\Database\Eloquent\Model;
 

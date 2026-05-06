@@ -63,7 +63,7 @@ Route::middleware('auth:jwt')->prefix('jwt')->group(function () {
     Route::get('response-details/download', [ResponseDetailController::class, 'download']);
     Route::get('response-details/satisfaction-labels', [ResponseDetailController::class, 'satisfactionLabels']);
     Route::get('response-details/label-counts', [ResponseDetailController::class, 'labelCounts']);
-    Route::get('response-details/result-by-dosen', [ResponseDetailResultController::class, 'index']);
+    Route::get('response-details/result-avarage', [ResponseDetailResultController::class, 'index']);
     Route::get('response-details/{response_detail}', [ResponseDetailController::class, 'show']);
 
     // Health check routes

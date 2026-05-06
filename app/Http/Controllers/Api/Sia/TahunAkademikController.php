@@ -3,7 +3,7 @@
 namespace App\Http\Controllers\Api\Sia;
 
 use App\Http\Controllers\Controller;
-use App\Models\Sia\TahunAkademik;
+use App\Models\Siakad\TahunAkademik;
 use Illuminate\Http\JsonResponse;
 
 class TahunAkademikController extends Controller
