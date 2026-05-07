@@ -196,8 +196,9 @@ class ResponseDetailExportAggregationV2 implements FromGenerator, WithHeadings
         }
 
         if (!empty($this->filters['prodi_id'])) {
+            $prodiIds = $this->normalizeProdiIdCandidates((string) $this->filters['prodi_id']);
             $ids = MataKuliah::query()
-                ->where('ProdiID', $this->filters['prodi_id'])
+                ->whereIn('ProdiID', $prodiIds)
                 ->pluck('MKID')
                 ->map(fn($value) => (string) $value)
                 ->all();
@@ -239,5 +240,28 @@ class ResponseDetailExportAggregationV2 implements FromGenerator, WithHeadings
         }
 
         return array_values(array_intersect($existingIds, $incomingIds));
+    }
+
+    private function normalizeProdiIdCandidates(string $prodiId): array
+    {
+        $trimmed = trim($prodiId);
+        if ($trimmed === '') {
+            return [];
+        }
+
+        if (!ctype_digit($trimmed)) {
+            return [$trimmed];
+        }
+
+        $normalized = ltrim($trimmed, '0');
+        if ($normalized === '') {
+            $normalized = '0';
+        }
+
+        return array_values(array_unique([
+            $trimmed,
+            $normalized,
+            str_pad($normalized, 4, '0', STR_PAD_LEFT),
+        ]));
     }
 }

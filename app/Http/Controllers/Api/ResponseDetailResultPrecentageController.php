@@ -66,11 +66,14 @@ class ResponseDetailResultPrecentageController extends Controller
             ->keyBy('MKID');
 
         $prodiIds = $matakuliahMap->pluck('ProdiID')->filter()->unique()->values()->all();
-        $prodiMap = Prodi::query()
+        $prodiRows = Prodi::query()
             ->select(['ProdiID', 'Nama'])
             ->whereIn('ProdiID', $prodiIds)
-            ->get()
-            ->keyBy('ProdiID');
+            ->get();
+        $prodiMap = $prodiRows->mapWithKeys(function ($item) {
+            $normalized = $this->normalizeProdiIdForOutput((string) $item->ProdiID);
+            return [$normalized => $item];
+        });
 
         $dosenMap = DB::connection('siakad')
             ->table('dosen')
@@ -81,13 +84,14 @@ class ResponseDetailResultPrecentageController extends Controller
         foreach ($rows as $row) {
             $groupKey = $row->TahunAkademik . '|' . $row->DosenID . '|' . $row->MatakuliahID;
             $mk = $matakuliahMap->get($row->MatakuliahID);
-            $prodi = $mk ? $prodiMap->get($mk->ProdiID) : null;
+            $prodiKey = $mk ? $this->normalizeProdiIdForOutput((string) $mk->ProdiID) : null;
+            $prodi = $prodiKey ? $prodiMap->get($prodiKey) : null;
 
             if (!isset($grouped[$groupKey])) {
                 $grouped[$groupKey] = [
                     'TahunAkademik' => $row->TahunAkademik,
                     'prodi' => [
-                        'ProdiID' => $prodi?->ProdiID,
+                        'ProdiID' => $prodiKey,
                         'Nama' => $prodi?->Nama,
                     ],
                     'dosen' => [
@@ -139,10 +143,50 @@ class ResponseDetailResultPrecentageController extends Controller
             return [];
         }
 
+        $prodiIds = $this->normalizeProdiIdCandidates($programCode);
+
         return MataKuliah::query()
-            ->where('ProdiID', $programCode)
+            ->whereIn('ProdiID', $prodiIds)
             ->pluck('MKID')
             ->values()
             ->all();
+    }
+
+    private function normalizeProdiIdCandidates(string $prodiId): array
+    {
+        $trimmed = trim($prodiId);
+        if ($trimmed === '') {
+            return [];
+        }
+
+        if (!ctype_digit($trimmed)) {
+            return [$trimmed];
+        }
+
+        $normalized = ltrim($trimmed, '0');
+        if ($normalized === '') {
+            $normalized = '0';
+        }
+
+        return array_values(array_unique([
+            $trimmed,
+            $normalized,
+            str_pad($normalized, 4, '0', STR_PAD_LEFT),
+        ]));
+    }
+
+    private function normalizeProdiIdForOutput(string $prodiId): string
+    {
+        $trimmed = trim($prodiId);
+        if ($trimmed === '' || !ctype_digit($trimmed)) {
+            return $trimmed;
+        }
+
+        $normalized = ltrim($trimmed, '0');
+        if ($normalized === '') {
+            $normalized = '0';
+        }
+
+        return str_pad($normalized, 4, '0', STR_PAD_LEFT);
     }
 }

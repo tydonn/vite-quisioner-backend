@@ -516,7 +516,8 @@ class ResponseDetailController extends Controller
         $query = MataKuliah::query()->select(['MKID']);
 
         if (!empty($prodiId)) {
-            $query->where('ProdiID', $prodiId);
+            $normalizedProdiIds = $this->normalizeProdiIdCandidates((string) $prodiId);
+            $query->whereIn('ProdiID', $normalizedProdiIds);
         } elseif (!empty($namaProdi)) {
             $query->whereHas('prodi', function ($subQuery) use ($namaProdi) {
                 $subQuery->where('Nama', 'like', '%' . $namaProdi . '%');
@@ -524,6 +525,29 @@ class ResponseDetailController extends Controller
         }
 
         return $query->pluck('MKID');
+    }
+
+    private function normalizeProdiIdCandidates(string $prodiId): array
+    {
+        $trimmed = trim($prodiId);
+        if ($trimmed === '') {
+            return [];
+        }
+
+        if (!ctype_digit($trimmed)) {
+            return [$trimmed];
+        }
+
+        $normalized = ltrim($trimmed, '0');
+        if ($normalized === '') {
+            $normalized = '0';
+        }
+
+        return array_values(array_unique([
+            $trimmed,
+            $normalized,
+            str_pad($normalized, 4, '0', STR_PAD_LEFT),
+        ]));
     }
 
     private function buildExportFileName(array $filters, string $prefix): string

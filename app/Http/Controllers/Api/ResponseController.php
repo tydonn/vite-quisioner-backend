@@ -39,7 +39,8 @@ class ResponseController extends Controller
             $mkQuery = MataKuliah::query()->select(['MKID']);
 
             if ($request->filled('prodi_id')) {
-                $mkQuery->where('ProdiID', $request->prodi_id);
+                $normalizedProdiIds = $this->normalizeProdiIdCandidates((string) $request->prodi_id);
+                $mkQuery->whereIn('ProdiID', $normalizedProdiIds);
             }
 
             if ($request->filled('nama_prodi')) {
@@ -122,7 +123,7 @@ class ResponseController extends Controller
             ->pluck('ProdiID');
 
         $prodiQuery = Prodi::query()
-            ->select(['ProdiID', 'Nama'])
+            ->selectRaw("LPAD(CAST(ProdiID AS CHAR), 4, '0') as ProdiID, Nama")
             ->whereIn('ProdiID', $prodiIds)
             ->orderBy('Nama');
 
@@ -170,7 +171,8 @@ class ResponseController extends Controller
             ->orderBy('Nama');
 
         if ($request->filled('prodi_id')) {
-            $matakuliahQuery->where('ProdiID', $request->prodi_id);
+            $normalizedProdiIds = $this->normalizeProdiIdCandidates((string) $request->prodi_id);
+            $matakuliahQuery->whereIn('ProdiID', $normalizedProdiIds);
         }
 
         if ($request->filled('q')) {
@@ -248,7 +250,8 @@ class ResponseController extends Controller
             $mkQuery = MataKuliah::query()->select(['MKID']);
 
             if ($request->filled('prodi_id')) {
-                $mkQuery->where('ProdiID', $request->prodi_id);
+                $normalizedProdiIds = $this->normalizeProdiIdCandidates((string) $request->prodi_id);
+                $mkQuery->whereIn('ProdiID', $normalizedProdiIds);
             }
 
             if ($request->filled('nama_prodi')) {
@@ -304,7 +307,7 @@ class ResponseController extends Controller
 
         return response()->json([
             'success' => true,
-            'data' => $result->items(),
+            'data' => $this->hydrateMissingProdi($result->items()),
             'pagination' => [
                 'current_page' => $result->currentPage(),
                 'per_page' => $result->perPage(),
@@ -364,10 +367,11 @@ class ResponseController extends Controller
         $this->applyProgramScopeToResponseQuery($query, $scope['program_code'], $scope['is_administrator'], $scope['is_legacy_token']);
 
         $response = $query->findOrFail($id);
+        $hydrated = $this->hydrateMissingProdi([$response]);
 
         return response()->json([
             'success' => true,
-            'data' => $response,
+            'data' => $hydrated[0] ?? $response,
         ]);
     }
 
@@ -435,5 +439,87 @@ class ResponseController extends Controller
         }
 
         $query->whereIn('MatakuliahID', $mkIds);
+    }
+
+    private function normalizeProdiIdCandidates(string $prodiId): array
+    {
+        $trimmed = trim($prodiId);
+        if ($trimmed === '') {
+            return [];
+        }
+
+        if (!ctype_digit($trimmed)) {
+            return [$trimmed];
+        }
+
+        $normalized = ltrim($trimmed, '0');
+        if ($normalized === '') {
+            $normalized = '0';
+        }
+
+        return array_values(array_unique([
+            $trimmed,
+            $normalized,
+            str_pad($normalized, 4, '0', STR_PAD_LEFT),
+        ]));
+    }
+
+    private function hydrateMissingProdi(array $responses): array
+    {
+        $prodiIdCandidates = [];
+        foreach ($responses as $response) {
+            $matakuliah = $response->matakuliah ?? null;
+            if (!$matakuliah || !empty($matakuliah->prodi) || empty($matakuliah->ProdiID)) {
+                continue;
+            }
+
+            $prodiIdCandidates = array_merge(
+                $prodiIdCandidates,
+                $this->normalizeProdiIdCandidates((string) $matakuliah->ProdiID)
+            );
+        }
+
+        $prodiIdCandidates = array_values(array_unique($prodiIdCandidates));
+        if (empty($prodiIdCandidates)) {
+            return $responses;
+        }
+
+        $prodiRows = Prodi::query()
+            ->select(['ProdiID', 'Nama'])
+            ->whereIn('ProdiID', $prodiIdCandidates)
+            ->get();
+
+        $prodiMap = [];
+        foreach ($prodiRows as $row) {
+            foreach ($this->normalizeProdiIdCandidates((string) $row->ProdiID) as $candidate) {
+                $prodiMap[$candidate] = [
+                    'ProdiID' => (string) $row->ProdiID,
+                    'Nama' => $row->Nama,
+                ];
+            }
+        }
+
+        foreach ($responses as $response) {
+            $matakuliah = $response->matakuliah ?? null;
+            if (!$matakuliah || !empty($matakuliah->prodi) || empty($matakuliah->ProdiID)) {
+                continue;
+            }
+
+            $lookup = $prodiMap[(string) $matakuliah->ProdiID] ?? null;
+            if ($lookup === null) {
+                foreach ($this->normalizeProdiIdCandidates((string) $matakuliah->ProdiID) as $candidate) {
+                    if (isset($prodiMap[$candidate])) {
+                        $lookup = $prodiMap[$candidate];
+                        break;
+                    }
+                }
+            }
+
+            if ($lookup !== null) {
+                $matakuliah->setRelation('prodi', new Prodi($lookup));
+            }
+        }
+
+        return $responses;
     }
 }

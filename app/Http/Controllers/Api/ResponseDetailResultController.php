@@ -117,8 +117,10 @@ class ResponseDetailResultController extends Controller
             return [];
         }
 
+        $prodiIds = $this->normalizeProdiIdCandidates($programCode);
+
         return MataKuliah::query()
-            ->where('ProdiID', $programCode)
+            ->whereIn('ProdiID', $prodiIds)
             ->pluck('MKID')
             ->values()
             ->all();
@@ -182,5 +184,28 @@ class ResponseDetailResultController extends Controller
         }
 
         return $result;
+    }
+
+    private function normalizeProdiIdCandidates(string $prodiId): array
+    {
+        $trimmed = trim($prodiId);
+        if ($trimmed === '') {
+            return [];
+        }
+
+        if (!ctype_digit($trimmed)) {
+            return [$trimmed];
+        }
+
+        $normalized = ltrim($trimmed, '0');
+        if ($normalized === '') {
+            $normalized = '0';
+        }
+
+        return array_values(array_unique([
+            $trimmed,
+            $normalized,
+            str_pad($normalized, 4, '0', STR_PAD_LEFT),
+        ]));
     }
 }
