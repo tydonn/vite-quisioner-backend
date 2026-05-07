@@ -127,7 +127,7 @@ class ResponseDetailExportAgretion implements FromGenerator, WithHeadings
                 $row->TahunAkademik ?? '-',
                 $row->CategoryName ?? '-',
                 $row->AspectText ?? '-',
-                round((float) ($row->ChoiceValueAvg ?? 0), 2),
+                (int) round((float) ($row->ChoiceValueAvg ?? 0), 0),
             ];
 
             $no++;
