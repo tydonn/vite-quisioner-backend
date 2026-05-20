@@ -3,7 +3,9 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\ActivityLog;
 use App\Models\Quisioner\Question;
+use App\Support\ActivityLogger;
 use Illuminate\Http\Request;
 
 class QuestionController extends Controller
@@ -52,7 +54,7 @@ class QuestionController extends Controller
 
         return response()->json([
             'success' => true,
-            'data' => $result->items(),
+            'data' => $this->appendLatestActivityLog($result->items()),
             'pagination' => [
                 'current_page' => $result->currentPage(),
                 'per_page' => $result->perPage(),
@@ -104,7 +106,7 @@ class QuestionController extends Controller
 
         return response()->json([
             'success' => true,
-            'data' => $question,
+            'data' => $this->appendLatestActivityLog([$question])[0] ?? $question,
         ]);
     }
 
@@ -123,10 +125,29 @@ class QuestionController extends Controller
         ]);
 
         $question = Question::create($data);
+        ActivityLogger::log(
+            $request,
+            'question',
+            'create',
+            Question::class,
+            $question->AspectID,
+            auth('jwt')->user(),
+            [
+                'new_data' => $question->only([
+                    'AspectID',
+                    'CategoryID',
+                    'AspectText',
+                    'AnswerType',
+                    'ChoiceTypeID',
+                    'SortOrder',
+                    'IsActive',
+                ]),
+            ]
+        );
 
         return response()->json([
             'success' => true,
-            'data' => $question,
+            'data' => $this->appendLatestActivityLog([$question])[0] ?? $question,
         ], 201);
     }
 
@@ -136,6 +157,15 @@ class QuestionController extends Controller
     public function update(Request $request, $id)
     {
         $question = Question::findOrFail($id);
+        $oldData = $question->only([
+            'AspectID',
+            'CategoryID',
+            'AspectText',
+            'AnswerType',
+            'ChoiceTypeID',
+            'SortOrder',
+            'IsActive',
+        ]);
 
         $data = $request->validate([
             'CategoryID' => 'sometimes|integer',
@@ -147,10 +177,31 @@ class QuestionController extends Controller
         ]);
 
         $question->update($data);
+        $question->refresh();
+        ActivityLogger::log(
+            $request,
+            'question',
+            'update',
+            Question::class,
+            $question->AspectID,
+            auth('jwt')->user(),
+            [
+                'old_data' => $oldData,
+                'new_data' => $question->only([
+                    'AspectID',
+                    'CategoryID',
+                    'AspectText',
+                    'AnswerType',
+                    'ChoiceTypeID',
+                    'SortOrder',
+                    'IsActive',
+                ]),
+            ]
+        );
 
         return response()->json([
             'success' => true,
-            'data' => $question,
+            'data' => $this->appendLatestActivityLog([$question])[0] ?? $question,
         ]);
     }
 
@@ -160,11 +211,81 @@ class QuestionController extends Controller
     public function destroy($id)
     {
         $question = Question::findOrFail($id);
+        $oldData = $question->only([
+            'AspectID',
+            'CategoryID',
+            'AspectText',
+            'AnswerType',
+            'ChoiceTypeID',
+            'SortOrder',
+            'IsActive',
+        ]);
         $question->delete();
+        ActivityLogger::log(
+            request(),
+            'question',
+            'delete',
+            Question::class,
+            $id,
+            auth('jwt')->user(),
+            [
+                'old_data' => $oldData,
+            ]
+        );
 
         return response()->json([
             'success' => true,
             'message' => 'Question deleted',
         ]);
+    }
+
+    private function appendLatestActivityLog(array $questions): array
+    {
+        $aspectIds = collect($questions)
+            ->pluck('AspectID')
+            ->filter()
+            ->map(fn ($id) => (string) $id)
+            ->unique()
+            ->values()
+            ->all();
+
+        if (empty($aspectIds)) {
+            return $questions;
+        }
+
+        $logs = ActivityLog::query()
+            ->where('module', 'question')
+            ->where('entity_type', Question::class)
+            ->whereIn('entity_id', $aspectIds)
+            ->orderByDesc('id')
+            ->get();
+
+        $activityMap = [];
+        foreach ($logs as $log) {
+            if (isset($activityMap[$log->entity_id])) {
+                continue;
+            }
+
+            $activityMap[$log->entity_id] = [
+                'id' => $log->id,
+                'module' => $log->module,
+                'action' => $log->action,
+                'entity_type' => $log->entity_type,
+                'entity_id' => $log->entity_id,
+                'actor_id' => $log->actor_id,
+                'actor_name' => $log->actor_name,
+                'actor_email' => $log->actor_email,
+                'meta' => $log->meta,
+                'created_at' => $log->created_at,
+                'updated_at' => $log->updated_at,
+            ];
+        }
+
+        foreach ($questions as $question) {
+            $key = (string) ($question->AspectID ?? '');
+            $question->setAttribute('activity_log', $activityMap[$key] ?? null);
+        }
+
+        return $questions;
     }
 }

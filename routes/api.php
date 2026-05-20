@@ -1,6 +1,8 @@
 <?php
 
 use App\Http\Controllers\Api\CategoryController;
+use App\Http\Controllers\Api\ActivityLogController;
+use App\Http\Controllers\Api\AdminAccountController;
 use App\Http\Controllers\Api\ChoiceController;
 use App\Http\Controllers\Api\ChoiceTypeController;
 use App\Http\Controllers\Api\HealthController;
@@ -51,6 +53,8 @@ Route::middleware('auth:jwt')->prefix('jwt')->group(function () {
     Route::apiResource('choice-types', ChoiceTypeController::class);
     Route::apiResource('dosen', DosenController::class);
     Route::get('tahun-akademik/options', [TahunAkademikController::class, 'options']);
+    Route::get('activity-logs', [ActivityLogController::class, 'index']);
+    Route::post('admin-users', [AdminAccountController::class, 'store']);
 
     // JWT hybrid routes: responses (read-first migration)
     Route::get('responses/filter-options/prodi', [ResponseController::class, 'prodiOptions']);
