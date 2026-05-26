@@ -5,17 +5,26 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\ActivityLog;
 use App\Models\Quisioner\Question;
+use App\Models\Quisioner\QuestionProdi;
+use App\Models\Siakad\Prodi;
 use App\Support\ActivityLogger;
+use App\Support\ProgramScope;
 use Illuminate\Http\Request;
 
 class QuestionController extends Controller
 {
-    //
+    use ProgramScope;
+
     /**
      * GET /api/questions
      */
     public function index(Request $request)
     {
+        $scope = $this->resolveProgramScope();
+        if (!$scope['is_administrator'] && empty($scope['program_code'])) {
+            return $this->unauthorizedProgramScopeResponse();
+        }
+
         $query = Question::query()
             ->select([
                 'AspectID',
@@ -28,6 +37,7 @@ class QuestionController extends Controller
             ])
             ->with('category:CategoryID,CategoryName,SortOrder,IsActive')
             ->orderBy('SortOrder');
+        $this->applyQuestionProgramScope($query, $scope);
 
         // filter by category
         if ($request->filled('category_id')) {
@@ -52,9 +62,12 @@ class QuestionController extends Controller
             ? $query->paginate($perPage)
             : $query->simplePaginate($perPage);
 
+        $items = $this->appendLatestActivityLog($result->items());
+        $items = $this->appendQuestionProdis($items);
+
         return response()->json([
             'success' => true,
-            'data' => $this->appendLatestActivityLog($result->items()),
+            'data' => $items,
             'pagination' => [
                 'current_page' => $result->currentPage(),
                 'per_page' => $result->perPage(),
@@ -70,7 +83,13 @@ class QuestionController extends Controller
      */
     public function count(Request $request)
     {
+        $scope = $this->resolveProgramScope();
+        if (!$scope['is_administrator'] && empty($scope['program_code'])) {
+            return $this->unauthorizedProgramScopeResponse();
+        }
+
         $query = Question::query();
+        $this->applyQuestionProgramScope($query, $scope);
 
         if ($request->filled('category_id')) {
             $query->where('CategoryID', $request->category_id);
@@ -92,6 +111,11 @@ class QuestionController extends Controller
      */
     public function show($id)
     {
+        $scope = $this->resolveProgramScope();
+        if (!$scope['is_administrator'] && empty($scope['program_code'])) {
+            return $this->unauthorizedProgramScopeResponse();
+        }
+
         $question = Question::with(['category:CategoryID,CategoryName,SortOrder,IsActive'])
             ->select([
                 'AspectID',
@@ -102,11 +126,17 @@ class QuestionController extends Controller
                 'SortOrder',
                 'IsActive',
             ])
+            ->where(function ($query) use ($scope) {
+                $this->applyQuestionProgramScope($query, $scope);
+            })
             ->findOrFail($id);
+
+        $item = $this->appendLatestActivityLog([$question])[0] ?? $question;
+        $item = $this->appendQuestionProdis([$item])[0] ?? $item;
 
         return response()->json([
             'success' => true,
-            'data' => $this->appendLatestActivityLog([$question])[0] ?? $question,
+            'data' => $item,
         ]);
     }
 
@@ -115,6 +145,11 @@ class QuestionController extends Controller
      */
     public function store(Request $request)
     {
+        $scope = $this->resolveProgramScope();
+        if (!$scope['is_administrator'] && empty($scope['program_code'])) {
+            return $this->unauthorizedProgramScopeResponse();
+        }
+
         $data = $request->validate([
             'CategoryID' => 'required|integer',
             'AspectText' => 'required|string|max:255',
@@ -122,9 +157,14 @@ class QuestionController extends Controller
             'ChoiceTypeID' => 'nullable|integer',
             'SortOrder' => 'nullable|integer',
             'IsActive' => 'nullable|boolean',
+            'prodi_ids' => 'nullable|array',
+            'prodi_ids.*' => 'string|max:20',
         ]);
 
         $question = Question::create($data);
+        $prodiIds = $this->resolveAssignedProdiIds($request, $scope);
+        $this->syncQuestionProdis($question, $prodiIds, auth('jwt')->id());
+
         ActivityLogger::log(
             $request,
             'question',
@@ -147,7 +187,7 @@ class QuestionController extends Controller
 
         return response()->json([
             'success' => true,
-            'data' => $this->appendLatestActivityLog([$question])[0] ?? $question,
+            'data' => $this->appendQuestionProdis([$this->appendLatestActivityLog([$question])[0] ?? $question])[0] ?? $question,
         ], 201);
     }
 
@@ -156,7 +196,16 @@ class QuestionController extends Controller
      */
     public function update(Request $request, $id)
     {
-        $question = Question::findOrFail($id);
+        $scope = $this->resolveProgramScope();
+        if (!$scope['is_administrator'] && empty($scope['program_code'])) {
+            return $this->unauthorizedProgramScopeResponse();
+        }
+
+        $question = Question::query()
+            ->where(function ($query) use ($scope) {
+                $this->applyQuestionProgramScope($query, $scope);
+            })
+            ->findOrFail($id);
         $oldData = $question->only([
             'AspectID',
             'CategoryID',
@@ -174,9 +223,15 @@ class QuestionController extends Controller
             'ChoiceTypeID' => 'nullable|integer',
             'SortOrder' => 'nullable|integer',
             'IsActive' => 'nullable|boolean',
+            'prodi_ids' => 'nullable|array',
+            'prodi_ids.*' => 'string|max:20',
         ]);
 
         $question->update($data);
+        if ($request->has('prodi_ids')) {
+            $prodiIds = $this->resolveAssignedProdiIds($request, $scope);
+            $this->syncQuestionProdis($question, $prodiIds, auth('jwt')->id());
+        }
         $question->refresh();
         ActivityLogger::log(
             $request,
@@ -201,7 +256,7 @@ class QuestionController extends Controller
 
         return response()->json([
             'success' => true,
-            'data' => $this->appendLatestActivityLog([$question])[0] ?? $question,
+            'data' => $this->appendQuestionProdis([$this->appendLatestActivityLog([$question])[0] ?? $question])[0] ?? $question,
         ]);
     }
 
@@ -210,7 +265,16 @@ class QuestionController extends Controller
      */
     public function destroy($id)
     {
-        $question = Question::findOrFail($id);
+        $scope = $this->resolveProgramScope();
+        if (!$scope['is_administrator'] && empty($scope['program_code'])) {
+            return $this->unauthorizedProgramScopeResponse();
+        }
+
+        $question = Question::query()
+            ->where(function ($query) use ($scope) {
+                $this->applyQuestionProgramScope($query, $scope);
+            })
+            ->findOrFail($id);
         $oldData = $question->only([
             'AspectID',
             'CategoryID',
@@ -287,5 +351,128 @@ class QuestionController extends Controller
         }
 
         return $questions;
+    }
+
+    private function appendQuestionProdis(array $questions): array
+    {
+        $aspectIds = collect($questions)->pluck('AspectID')->filter()->values()->all();
+        if (empty($aspectIds)) {
+            return $questions;
+        }
+
+        $rows = QuestionProdi::query()
+            ->whereIn('AspectID', $aspectIds)
+            ->orderBy('id')
+            ->get(['AspectID', 'ProdiID']);
+
+        $map = [];
+        foreach ($rows as $row) {
+            $map[$row->AspectID][] = (string) $row->ProdiID;
+        }
+
+        $allProdiIds = collect($rows)->pluck('ProdiID')->filter()->unique()->values()->all();
+        $prodiMap = Prodi::query()
+            ->whereIn('ProdiID', $allProdiIds)
+            ->get(['ProdiID', 'Nama'])
+            ->keyBy('ProdiID');
+
+        foreach ($questions as $question) {
+            $prodiIds = $map[$question->AspectID] ?? [];
+            $question->setAttribute('prodi_ids', $prodiIds);
+            $question->setAttribute('prodis', collect($prodiIds)->map(function ($prodiId) use ($prodiMap) {
+                $prodi = $prodiMap->get($prodiId);
+                return [
+                    'ProdiID' => $prodiId,
+                    'Nama' => $prodi?->Nama,
+                ];
+            })->values()->all());
+        }
+
+        return $questions;
+    }
+
+    private function resolveAssignedProdiIds(Request $request, array $scope): array
+    {
+        $fromPayload = collect($request->input('prodi_ids', []))
+            ->map(fn ($id) => trim((string) $id))
+            ->filter()
+            ->values()
+            ->all();
+
+        if (!empty($fromPayload)) {
+            return array_values(array_unique($fromPayload));
+        }
+
+        if (!$scope['is_administrator'] && !empty($scope['program_code'])) {
+            return [(string) $scope['program_code']];
+        }
+
+        return [];
+    }
+
+    private function syncQuestionProdis(Question $question, array $prodiIds, ?int $actorId): void
+    {
+        QuestionProdi::query()->where('AspectID', $question->AspectID)->delete();
+
+        if (empty($prodiIds)) {
+            return;
+        }
+
+        $now = now();
+        $rows = array_map(function ($prodiId) use ($question, $actorId, $now) {
+            return [
+                'AspectID' => $question->AspectID,
+                'ProdiID' => (string) $prodiId,
+                'created_by' => $actorId,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ];
+        }, $prodiIds);
+
+        QuestionProdi::query()->insert($rows);
+    }
+
+    private function applyQuestionProgramScope($query, array $scope): void
+    {
+        if ($scope['is_administrator']) {
+            return;
+        }
+
+        $programCode = (string) ($scope['program_code'] ?? '');
+        if ($programCode === '') {
+            $query->whereRaw('1 = 0');
+            return;
+        }
+
+        $candidates = $this->normalizeProdiIdCandidates($programCode);
+        $query->whereHas('questionProdis', function ($subQuery) use ($candidates) {
+            $subQuery->where(function ($q) use ($candidates) {
+                $q->whereIn('ProdiID', $candidates)
+                    ->orWhere('ProdiID', '999999');
+            });
+        });
+    }
+
+    private function normalizeProdiIdCandidates(string $prodiId): array
+    {
+        $trimmed = trim($prodiId);
+        if ($trimmed === '') {
+            return [];
+        }
+
+        if (!ctype_digit($trimmed)) {
+            return [$trimmed];
+        }
+
+        $normalized = ltrim($trimmed, '0');
+        if ($normalized === '') {
+            $normalized = '0';
+        }
+
+        return array_values(array_unique([
+            $trimmed,
+            $normalized,
+            str_pad($normalized, 4, '0', STR_PAD_LEFT),
+        ]));
     }
 }

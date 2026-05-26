@@ -32,4 +32,9 @@ class Question extends Model
     {
         return $this->hasMany(ResponseDetail::class, 'AspectID', 'AspectID');
     }
+
+    public function questionProdis()
+    {
+        return $this->hasMany(QuestionProdi::class, 'AspectID', 'AspectID');
+    }
 }
