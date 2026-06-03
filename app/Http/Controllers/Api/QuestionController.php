@@ -157,13 +157,16 @@ class QuestionController extends Controller
             'ChoiceTypeID' => 'nullable|integer',
             'SortOrder' => 'nullable|integer',
             'IsActive' => 'nullable|boolean',
+            'prodi_id' => 'nullable|string|max:20',
+            'ProdiID' => 'nullable|string|max:20',
             'prodi_ids' => 'nullable|array',
             'prodi_ids.*' => 'string|max:20',
         ]);
 
-        $question = Question::create($data);
+        $questionData = collect($data)->except(['prodi_ids', 'prodi_id', 'ProdiID'])->all();
+        $question = Question::create($questionData);
         $prodiIds = $this->resolveAssignedProdiIds($request, $scope);
-        $this->syncQuestionProdis($question, $prodiIds, auth('jwt')->id());
+        $this->syncQuestionProdis($question, $prodiIds, auth('jwt')->user()?->name);
 
         ActivityLogger::log(
             $request,
@@ -223,14 +226,17 @@ class QuestionController extends Controller
             'ChoiceTypeID' => 'nullable|integer',
             'SortOrder' => 'nullable|integer',
             'IsActive' => 'nullable|boolean',
+            'prodi_id' => 'nullable|string|max:20',
+            'ProdiID' => 'nullable|string|max:20',
             'prodi_ids' => 'nullable|array',
             'prodi_ids.*' => 'string|max:20',
         ]);
 
-        $question->update($data);
-        if ($request->has('prodi_ids')) {
+        $questionData = collect($data)->except(['prodi_ids', 'prodi_id', 'ProdiID'])->all();
+        $question->update($questionData);
+        if ($request->has('prodi_ids') || $request->has('prodi_id') || $request->has('ProdiID')) {
             $prodiIds = $this->resolveAssignedProdiIds($request, $scope);
-            $this->syncQuestionProdis($question, $prodiIds, auth('jwt')->id());
+            $this->syncQuestionProdis($question, $prodiIds, auth('jwt')->user()?->name);
         }
         $question->refresh();
         ActivityLogger::log(
@@ -393,7 +399,18 @@ class QuestionController extends Controller
 
     private function resolveAssignedProdiIds(Request $request, array $scope): array
     {
-        $fromPayload = collect($request->input('prodi_ids', []))
+        $payloadProdiIds = $request->input('prodi_ids', []);
+        if (!is_array($payloadProdiIds)) {
+            $payloadProdiIds = [$payloadProdiIds];
+        }
+
+        foreach (['prodi_id', 'ProdiID'] as $field) {
+            if ($request->filled($field)) {
+                $payloadProdiIds[] = $request->input($field);
+            }
+        }
+
+        $fromPayload = collect($payloadProdiIds)
             ->map(fn ($id) => trim((string) $id))
             ->filter()
             ->values()
@@ -407,10 +424,14 @@ class QuestionController extends Controller
             return [(string) $scope['program_code']];
         }
 
+        if ($scope['is_administrator']) {
+            return ['999999'];
+        }
+
         return [];
     }
 
-    private function syncQuestionProdis(Question $question, array $prodiIds, ?int $actorId): void
+    private function syncQuestionProdis(Question $question, array $prodiIds, ?string $actorName): void
     {
         QuestionProdi::query()->where('AspectID', $question->AspectID)->delete();
 
@@ -419,11 +440,11 @@ class QuestionController extends Controller
         }
 
         $now = now();
-        $rows = array_map(function ($prodiId) use ($question, $actorId, $now) {
+        $rows = array_map(function ($prodiId) use ($question, $actorName, $now) {
             return [
                 'AspectID' => $question->AspectID,
                 'ProdiID' => (string) $prodiId,
-                'created_by' => $actorId,
+                'created_by' => $actorName,
                 'created_at' => $now,
                 'updated_at' => $now,
             ];
