@@ -17,6 +17,7 @@ class Question extends Model
         'CategoryID',
         'AspectText',
         'AnswerType',
+        'RespondentID',
         'ChoiceTypeID',
         'SortOrder',
         'IsActive',
@@ -36,5 +37,11 @@ class Question extends Model
     public function questionProdis()
     {
         return $this->hasMany(QuestionProdi::class, 'AspectID', 'AspectID');
+    }
+
+    // Relasi ke Respondent
+    public function respondent()
+    {
+        return $this->belongsTo(Respondent::class, 'RespondentID', 'RespondentID');
     }
 }
