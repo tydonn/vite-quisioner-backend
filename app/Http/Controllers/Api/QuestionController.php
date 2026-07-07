@@ -31,11 +31,13 @@ class QuestionController extends Controller
                 'CategoryID',
                 'AspectText',
                 'AnswerType',
+                'RespondentID',
                 'ChoiceTypeID',
                 'SortOrder',
                 'IsActive',
             ])
             ->with('category:CategoryID,CategoryName,SortOrder,IsActive')
+            ->with('respondent:RespondentID,RespondentName')
             ->orderBy('SortOrder');
         $this->applyQuestionProgramScope($query, $scope);
 
@@ -314,7 +316,7 @@ class QuestionController extends Controller
         $aspectIds = collect($questions)
             ->pluck('AspectID')
             ->filter()
-            ->map(fn ($id) => (string) $id)
+            ->map(fn($id) => (string) $id)
             ->unique()
             ->values()
             ->all();
@@ -411,7 +413,7 @@ class QuestionController extends Controller
         }
 
         $fromPayload = collect($payloadProdiIds)
-            ->map(fn ($id) => trim((string) $id))
+            ->map(fn($id) => trim((string) $id))
             ->filter()
             ->values()
             ->all();
