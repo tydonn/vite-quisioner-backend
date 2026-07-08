@@ -13,6 +13,7 @@ use App\Http\Controllers\Api\ResponseDetailController;
 use App\Http\Controllers\Api\ResponseDetailResultController;
 use App\Http\Controllers\Api\ResponseDetailResultPrecentageController;
 use App\Http\Controllers\Api\ResponseDetailResultV2Controller;
+use App\Http\Controllers\Api\RespondentController;
 use App\Http\Controllers\Api\Siakad\DosenController;
 use App\Http\Controllers\Api\Sia\TahunAkademikController;
 use App\Http\Controllers\AuthSSOController;
@@ -52,6 +53,8 @@ Route::middleware('auth:jwt')->prefix('jwt')->group(function () {
     Route::apiResource('questions', QuestionController::class);
     Route::apiResource('choices', ChoiceController::class);
     Route::apiResource('choice-types', ChoiceTypeController::class);
+    Route::get('respondents/count', [RespondentController::class, 'count']);
+    Route::apiResource('respondents', RespondentController::class)->only(['index', 'show']);
     Route::apiResource('dosen', DosenController::class);
     Route::get('tahun-akademik/options', [TahunAkademikController::class, 'options']);
     Route::get('activity-logs', [ActivityLogController::class, 'index']);

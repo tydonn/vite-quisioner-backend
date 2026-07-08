@@ -15,5 +15,6 @@ class Respondent extends Model
 
     protected $fillable = [
         'RespondentName',
+        'LevelID'
     ];
 }
