@@ -154,6 +154,7 @@ class QuestionController extends Controller
 
         $data = $request->validate([
             'CategoryID' => 'required|integer',
+            'RespondentID' => 'nullable|integer',
             'AspectText' => 'required|string|max:255',
             'AnswerType' => 'nullable|in:CHOICE,TEXT,NUMBER',
             'ChoiceTypeID' => 'nullable|integer',
@@ -217,12 +218,14 @@ class QuestionController extends Controller
             'AspectText',
             'AnswerType',
             'ChoiceTypeID',
+            'RespondentID',
             'SortOrder',
             'IsActive',
         ]);
 
         $data = $request->validate([
             'CategoryID' => 'sometimes|integer',
+            'RespondentID' => 'nullable|integer',
             'AspectText' => 'sometimes|string|max:255',
             'AnswerType' => 'sometimes|in:CHOICE,TEXT,NUMBER',
             'ChoiceTypeID' => 'nullable|integer',
