@@ -46,9 +46,14 @@ class QuestionController extends Controller
             $query->where('CategoryID', $request->category_id);
         }
 
-        // active only
+        // filter by active status
         if ($request->filled('active')) {
             $query->where('IsActive', $request->active);
+        }
+
+        // filter by respondent
+        if ($request->filled('respondent_id')) {
+            $query->where('RespondentID', $request->respondent_id);
         }
 
         $perPage = (int) $request->get('per_page', 100);
