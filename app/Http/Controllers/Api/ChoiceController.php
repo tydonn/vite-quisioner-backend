@@ -23,7 +23,7 @@ class ChoiceController extends Controller
                 'SortOrder',
                 'IsActive',
             ])
-            ->with('question:AspectID,CategoryID,AspectText,AnswerType')
+            ->with('question:AspectID,CategoryID,RespondentID,AspectText,AnswerType')
             ->orderBy('SortOrder');
 
         // filter by aspect

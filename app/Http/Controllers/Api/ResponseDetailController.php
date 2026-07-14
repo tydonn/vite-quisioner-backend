@@ -390,8 +390,7 @@ class ResponseDetailController extends Controller
         ?string $programCode = null,
         bool $isAdministrator = false,
         bool $isLegacyToken = false
-    )
-    {
+    ) {
         $query = ResponseDetail::query()
             ->select([
                 'DetailID',
@@ -405,8 +404,8 @@ class ResponseDetailController extends Controller
         if ($withRelations) {
             $query->with([
                 'response:ResponID,MahasiswaID,DosenID,MatakuliahID,TahunAkademik,Semester',
-                // 'response.dosen:Login,Nama',
-                // 'response.mahasiswa:MhswID,Nama',
+                'response.dosen:Login,Nama',
+                'response.mahasiswa:MhswID,Nama',
                 'response.matakuliah:MKID,Nama,ProdiID',
                 'response.matakuliah.prodi:ProdiID,Nama',
                 'question:AspectID,AspectText,AnswerType',

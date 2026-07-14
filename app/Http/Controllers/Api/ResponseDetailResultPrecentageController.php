@@ -30,8 +30,10 @@ class ResponseDetailResultPrecentageController extends Controller
                 'r.MatakuliahID',
                 DB::raw('COALESCE(c.ChoiceValue, rd.AnswerNumber) as choice_value'),
                 DB::raw('COUNT(*) as total'),
+                DB::raw('COUNT(DISTINCT r.MahasiswaID) as total_mahasiswa'),
             ])
-            ->whereIn(DB::raw('COALESCE(c.ChoiceValue, rd.AnswerNumber)'), [1, 2, 3, 4]);
+            ->whereIn(DB::raw('COALESCE(c.ChoiceValue, rd.AnswerNumber)'), [1, 2, 3, 4])
+            ->where('c.IsActive', 1);
 
         if ($request->filled('tahun_akademik')) {
             $query->where('r.TahunAkademik', $request->tahun_akademik);
@@ -102,6 +104,18 @@ class ResponseDetailResultPrecentageController extends Controller
                         'MKID' => $row->MatakuliahID,
                         'Nama' => $mk?->Nama,
                     ],
+                    'countofchoicevalue' => [
+                        '1' => 0,
+                        '2' => 0,
+                        '3' => 0,
+                        '4' => 0,
+                    ],
+                    'studentcountofchoicevalue' => [
+                        '1' => 0,
+                        '2' => 0,
+                        '3' => 0,
+                        '4' => 0,
+                    ],
                     'precentageofchoicevalue' => [
                         '1' => 0,
                         '2' => 0,
@@ -114,6 +128,8 @@ class ResponseDetailResultPrecentageController extends Controller
 
             $choiceKey = (string) ((int) $row->choice_value);
             if (array_key_exists($choiceKey, $grouped[$groupKey]['precentageofchoicevalue'])) {
+                $grouped[$groupKey]['countofchoicevalue'][$choiceKey] = (int) $row->total;
+                $grouped[$groupKey]['studentcountofchoicevalue'][$choiceKey] = (int) $row->total_mahasiswa;
                 $grouped[$groupKey]['precentageofchoicevalue'][$choiceKey] = (int) $row->total;
                 $grouped[$groupKey]['_total_answers'] += (int) $row->total;
             }
@@ -121,6 +137,7 @@ class ResponseDetailResultPrecentageController extends Controller
 
         foreach ($grouped as &$item) {
             $total = $item['_total_answers'];
+            $item['total_respondent'] = $total;
             foreach (['1', '2', '3', '4'] as $choiceKey) {
                 $count = $item['precentageofchoicevalue'][$choiceKey];
                 $item['precentageofchoicevalue'][$choiceKey] = $total > 0
