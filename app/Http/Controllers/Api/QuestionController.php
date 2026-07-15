@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\ActivityLog;
 use App\Models\Quisioner\Question;
 use App\Models\Quisioner\QuestionProdi;
+use App\Models\Quisioner\Respondent;
 use App\Models\Siakad\Prodi;
 use App\Support\ActivityLogger;
 use App\Support\ProgramScope;
@@ -40,6 +41,7 @@ class QuestionController extends Controller
             ->with('respondent:RespondentID,RespondentName')
             ->orderBy('SortOrder');
         $this->applyQuestionProgramScope($query, $scope);
+        $this->applyQuestionRespondentScope($query, $scope);
 
         // filter by category
         if ($request->filled('category_id')) {
@@ -97,6 +99,7 @@ class QuestionController extends Controller
 
         $query = Question::query();
         $this->applyQuestionProgramScope($query, $scope);
+        $this->applyQuestionRespondentScope($query, $scope);
 
         if ($request->filled('category_id')) {
             $query->where('CategoryID', $request->category_id);
@@ -123,18 +126,25 @@ class QuestionController extends Controller
             return $this->unauthorizedProgramScopeResponse();
         }
 
-        $question = Question::with(['category:CategoryID,CategoryName,SortOrder,IsActive'])
+        $question = Question::with([
+            'category:CategoryID,CategoryName,SortOrder,IsActive',
+            'respondent:RespondentID,RespondentName',
+        ])
             ->select([
                 'AspectID',
                 'CategoryID',
                 'AspectText',
                 'AnswerType',
+                'RespondentID',
                 'ChoiceTypeID',
                 'SortOrder',
                 'IsActive',
             ])
             ->where(function ($query) use ($scope) {
                 $this->applyQuestionProgramScope($query, $scope);
+            })
+            ->where(function ($query) use ($scope) {
+                $this->applyQuestionRespondentScope($query, $scope);
             })
             ->findOrFail($id);
 
@@ -216,6 +226,9 @@ class QuestionController extends Controller
             ->where(function ($query) use ($scope) {
                 $this->applyQuestionProgramScope($query, $scope);
             })
+            ->where(function ($query) use ($scope) {
+                $this->applyQuestionRespondentScope($query, $scope);
+            })
             ->findOrFail($id);
         $oldData = $question->only([
             'AspectID',
@@ -289,6 +302,9 @@ class QuestionController extends Controller
         $question = Question::query()
             ->where(function ($query) use ($scope) {
                 $this->applyQuestionProgramScope($query, $scope);
+            })
+            ->where(function ($query) use ($scope) {
+                $this->applyQuestionRespondentScope($query, $scope);
             })
             ->findOrFail($id);
         $oldData = $question->only([
@@ -482,6 +498,30 @@ class QuestionController extends Controller
                     ->orWhere('ProdiID', '999999');
             });
         });
+    }
+
+    private function applyQuestionRespondentScope($query, array $scope): void
+    {
+        if ($scope['is_administrator']) {
+            return;
+        }
+
+        $respondentIds = Respondent::query()
+            ->where(function ($subQuery) {
+                $subQuery->where('RespondentName', 'like', '%mahasiswa%')
+                    ->orWhere('LevelID', 'like', '%mahasiswa%')
+                    ->orWhere('LevelID', 'MHS');
+            })
+            ->pluck('RespondentID')
+            ->values()
+            ->all();
+
+        if (empty($respondentIds)) {
+            $query->whereRaw('1 = 0');
+            return;
+        }
+
+        $query->whereIn('RespondentID', $respondentIds);
     }
 
     private function normalizeProdiIdCandidates(string $prodiId): array

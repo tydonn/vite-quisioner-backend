@@ -4,16 +4,25 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Quisioner\Choice;
+use App\Models\Quisioner\Question;
+use App\Models\Quisioner\Respondent;
+use App\Support\ProgramScope;
 use Illuminate\Http\Request;
 
 class ChoiceController extends Controller
 {
+    use ProgramScope;
+
     /**
      * GET /api/choices
      */
     public function index(Request $request)
     {
-        //
+        $scope = $this->resolveProgramScope();
+        if (!$scope['is_administrator'] && empty($scope['program_code'])) {
+            return $this->unauthorizedProgramScopeResponse();
+        }
+
         $query = Choice::query()
             ->select([
                 'ChoiceID',
@@ -25,6 +34,7 @@ class ChoiceController extends Controller
             ])
             ->with('question:AspectID,CategoryID,RespondentID,AspectText,AnswerType')
             ->orderBy('SortOrder');
+        $this->applyChoiceQuestionScope($query, $scope);
 
         // filter by aspect
         if ($request->filled('aspect_id')) {
@@ -76,7 +86,11 @@ class ChoiceController extends Controller
      */
     public function store(Request $request)
     {
-        //
+        $scope = $this->resolveProgramScope();
+        if (!$scope['is_administrator'] && empty($scope['program_code'])) {
+            return $this->unauthorizedProgramScopeResponse();
+        }
+
         $data = $request->validate([
             'AspectID' => 'required|integer',
             'ChoiceLabel' => 'required|string|max:255',
@@ -84,6 +98,13 @@ class ChoiceController extends Controller
             'SortOrder' => 'nullable|integer',
             'IsActive' => 'nullable|boolean',
         ]);
+
+        if (!$this->isAspectAllowedForScope((int) $data['AspectID'], $scope)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Question is not available for this program scope.',
+            ], 403);
+        }
 
         $choice = Choice::create($data);
 
@@ -98,8 +119,12 @@ class ChoiceController extends Controller
      */
     public function show(string $id)
     {
-        //
-        $question = Choice::with(['question:AspectID,CategoryID,AspectText,AnswerType'])
+        $scope = $this->resolveProgramScope();
+        if (!$scope['is_administrator'] && empty($scope['program_code'])) {
+            return $this->unauthorizedProgramScopeResponse();
+        }
+
+        $query = Choice::with(['question:AspectID,CategoryID,RespondentID,AspectText,AnswerType'])
             ->select([
                 'ChoiceID',
                 'AspectID',
@@ -107,12 +132,14 @@ class ChoiceController extends Controller
                 'ChoiceValue',
                 'SortOrder',
                 'IsActive',
-            ])
-            ->findOrFail($id);
+            ]);
+        $this->applyChoiceQuestionScope($query, $scope);
+
+        $choice = $query->findOrFail($id);
 
         return response()->json([
             'success' => true,
-            'data' => $question,
+            'data' => $choice,
         ]);
     }
 
@@ -129,8 +156,14 @@ class ChoiceController extends Controller
      */
     public function update(Request $request, $id)
     {
-        //
-        $choice = Choice::findOrFail($id);
+        $scope = $this->resolveProgramScope();
+        if (!$scope['is_administrator'] && empty($scope['program_code'])) {
+            return $this->unauthorizedProgramScopeResponse();
+        }
+
+        $query = Choice::query();
+        $this->applyChoiceQuestionScope($query, $scope);
+        $choice = $query->findOrFail($id);
 
         $data = $request->validate([
             'AspectID' => 'sometimes|integer',
@@ -139,6 +172,13 @@ class ChoiceController extends Controller
             'SortOrder' => 'nullable|integer',
             'IsActive' => 'nullable|boolean',
         ]);
+
+        if (array_key_exists('AspectID', $data) && !$this->isAspectAllowedForScope((int) $data['AspectID'], $scope)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Question is not available for this program scope.',
+            ], 403);
+        }
 
         $choice->update($data);
 
@@ -153,13 +193,116 @@ class ChoiceController extends Controller
      */
     public function destroy(string $id)
     {
-        //
-        $choice = Choice::findOrFail($id);
+        $scope = $this->resolveProgramScope();
+        if (!$scope['is_administrator'] && empty($scope['program_code'])) {
+            return $this->unauthorizedProgramScopeResponse();
+        }
+
+        $query = Choice::query();
+        $this->applyChoiceQuestionScope($query, $scope);
+        $choice = $query->findOrFail($id);
         $choice->delete();
 
         return response()->json([
             'success' => true,
             'message' => 'Choice deleted',
         ]);
+    }
+
+    private function applyChoiceQuestionScope($query, array $scope): void
+    {
+        if ($scope['is_administrator']) {
+            return;
+        }
+
+        $programCode = (string) ($scope['program_code'] ?? '');
+        if ($programCode === '') {
+            $query->whereRaw('1 = 0');
+            return;
+        }
+
+        $respondentIds = $this->resolveMahasiswaRespondentIds();
+        if (empty($respondentIds)) {
+            $query->whereRaw('1 = 0');
+            return;
+        }
+
+        $prodiCandidates = $this->normalizeProdiIdCandidates($programCode);
+        $query->whereHas('question', function ($questionQuery) use ($respondentIds, $prodiCandidates) {
+            $questionQuery
+                ->whereIn('RespondentID', $respondentIds)
+                ->whereHas('questionProdis', function ($prodiQuery) use ($prodiCandidates) {
+                    $prodiQuery->where(function ($q) use ($prodiCandidates) {
+                        $q->whereIn('ProdiID', $prodiCandidates)
+                            ->orWhere('ProdiID', '999999');
+                    });
+                });
+        });
+    }
+
+    private function isAspectAllowedForScope(int $aspectId, array $scope): bool
+    {
+        if ($scope['is_administrator']) {
+            return true;
+        }
+
+        $programCode = (string) ($scope['program_code'] ?? '');
+        if ($programCode === '') {
+            return false;
+        }
+
+        $respondentIds = $this->resolveMahasiswaRespondentIds();
+        if (empty($respondentIds)) {
+            return false;
+        }
+
+        $prodiCandidates = $this->normalizeProdiIdCandidates($programCode);
+        $query = Question::query()
+            ->where('AspectID', $aspectId)
+            ->whereIn('RespondentID', $respondentIds)
+            ->whereHas('questionProdis', function ($prodiQuery) use ($prodiCandidates) {
+                $prodiQuery->where(function ($q) use ($prodiCandidates) {
+                    $q->whereIn('ProdiID', $prodiCandidates)
+                        ->orWhere('ProdiID', '999999');
+                });
+            });
+
+        return $query->exists();
+    }
+
+    private function resolveMahasiswaRespondentIds(): array
+    {
+        return Respondent::query()
+            ->where(function ($subQuery) {
+                $subQuery->where('RespondentName', 'like', '%mahasiswa%')
+                    ->orWhere('LevelID', 'like', '%mahasiswa%')
+                    ->orWhere('LevelID', 'MHS');
+            })
+            ->pluck('RespondentID')
+            ->values()
+            ->all();
+    }
+
+    private function normalizeProdiIdCandidates(string $prodiId): array
+    {
+        $trimmed = trim($prodiId);
+        if ($trimmed === '') {
+            return [];
+        }
+
+        if (!ctype_digit($trimmed)) {
+            return [$trimmed];
+        }
+
+        $normalized = ltrim($trimmed, '0');
+        if ($normalized === '') {
+            $normalized = '0';
+        }
+
+        return array_values(array_unique([
+            $trimmed,
+            $normalized,
+            str_pad($normalized, 4, '0', STR_PAD_LEFT),
+        ]));
     }
 }

@@ -39,7 +39,8 @@ class ResponseDetailResultV2Controller extends Controller
                 DB::raw("ROUND(AVG(CASE WHEN cat.CategoryName = 'Tangibles' THEN COALESCE(c.ChoiceValue, rd.AnswerNumber) END), 2) as Tangibles"),
                 DB::raw("ROUND(AVG(CASE WHEN cat.CategoryName IN ('Assurance', 'Empathy', 'Reliability', 'Responsiveness', 'Tangibles') THEN COALESCE(c.ChoiceValue, rd.AnswerNumber) END), 2) as AverageTotal"),
             ])
-            ->where('q.AnswerType', 'CHOICE');
+            ->where('q.AnswerType', 'CHOICE')
+            ->where('c.IsActive', 1);
 
         $this->applyCommonFilters($query, $request, $scope);
 
