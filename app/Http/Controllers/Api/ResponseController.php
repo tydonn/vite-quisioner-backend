@@ -123,7 +123,7 @@ class ResponseController extends Controller
             ->pluck('ProdiID');
 
         $prodiQuery = Prodi::query()
-            ->selectRaw("LPAD(CAST(ProdiID AS CHAR), 4, '0') as ProdiID, Nama")
+            ->selectRaw('CAST(ProdiID AS CHAR) as ProdiID, Nama')
             ->whereIn('ProdiID', $prodiIds)
             ->orderBy('Nama');
 
@@ -133,7 +133,12 @@ class ResponseController extends Controller
 
         return response()->json([
             'success' => true,
-            'data' => $prodiQuery->get(),
+            'data' => $prodiQuery->get()->map(function ($prodi) {
+                return [
+                    'ProdiID' => (string) $prodi->ProdiID,
+                    'Nama' => $prodi->Nama,
+                ];
+            })->values(),
         ]);
     }
 
